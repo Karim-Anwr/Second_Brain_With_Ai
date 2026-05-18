@@ -13,13 +13,13 @@ class Settings(BaseSettings):
     chroma_collection: str = "second_brain"
 
     # AI
-    embedding_model: str = "all-MiniLM-L6-v2"
+    embedding_model: str = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2" 
     max_chunk_size: int = 500
     chunk_overlap: int = 50
     default_top_k: int = 5
 
     gemini_api_key: str = ""
-    
+
     class Config:
         env_file = ".env"
 
