@@ -70,7 +70,6 @@ pip install -r requirements.txt
 
 ```bash
 cp .env.example .env
-# Edit .env if needed — defaults work fine for local development
 ```
 
 ### 6. Run the server
