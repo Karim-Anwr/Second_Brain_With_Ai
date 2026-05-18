@@ -137,8 +137,3 @@ curl -X POST http://localhost:8000/api/v1/search \
 }
 ```
 
----
-
-### Interactive API Docs
-
-FastAPI generates automatic docs — open in your browser:
