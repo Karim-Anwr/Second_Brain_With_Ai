@@ -37,34 +37,27 @@ AI-powered app to upload, store, and search your documents using natural languag
 **Install Tesseract:**
 
 ```bash
-# Ubuntu / Debian
+# Ubuntu
 sudo apt install tesseract-ocr
 
-# macOS
-brew install tesseract
-
-# Windows
-# Download installer from:
-# https://github.com/UB-Mannheim/tesseract/wiki
 ```
 
 ### 2. Clone the project
 
 ```bash
-git clone https://github.com/your-username/second-brain.git
+git clone https://github.com/Karim-Anwr/Second_Brain_With_Ai.git
 cd second-brain
 ```
+
 
 ### 3. Create virtual environment
 
 ```bash
 python3 -m venv venv
 
-# Linux / macOS
+# Linux 
 source venv/bin/activate
 
-# Windows
-venv\Scripts\activate
 ```
 
 ### 4. Install dependencies
@@ -83,7 +76,7 @@ cp .env.example .env
 ### 6. Run the server
 
 ```bash
-uvicorn app.main:app --reload
+uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
 API is now running at: `http://localhost:8000`
@@ -102,10 +95,14 @@ curl -X POST http://localhost:8000/api/v1/upload \
 **Response:**
 ```json
 {
-  "document_id": "abc-123",
-  "file_name": "screenshot.png",
+  "memory_id": "mem_151c1e22ce14",
+  "file_name": "Screenshot_2022-12-17-09-22-12-47_680d03679600f7af0b4c700c6b270fe7.jpg",
   "file_type": "image",
-  "chunks_stored": 3,
+  "summary": "9:22 d 230 481) 56 Gig بناديلك تسمعني من دونك مش بمشي لو فارق ترجعلي وتلقاني وأنا من بعدك مش بحكي لو وقتي بيسمح لي بنساني وبستناك في مكاني نفس الشوارع ونفس القهاوي برغم الفراق ساب اللي قال أن مهما الحياة دي هتصعب هيفضل معاك ما تخلي غيري يكمل مكاني وصون الوعود اللي كانت زمان وأنا بناديلك تسمعني من دو...",
+  "tags": [],
+  "category": "other",
+  "importance": 0.5,
+  "total_chunks": 1,
   "status": "success"
 }
 ```
