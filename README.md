@@ -6,7 +6,7 @@ AI-powered app to upload, store, and search your documents using natural languag
 
 ##  What It Does
 
-- Upload screenshots, images, and PDFs
+- Upload screenshots, text , link ,images, and PDFs
 - Extract text automatically using OCR
 - Search your files using normal sentences (not keywords)
 - Get back the most relevant results using AI
