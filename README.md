@@ -6,7 +6,7 @@ AI-powered app to upload, store, and search your documents using natural languag
 
 ##  What It Does
 
-- Upload screenshots, images, and PDFs
+- Upload screenshots, text , link ,images, and PDFs
 - Extract text automatically using OCR
 - Search your files using normal sentences (not keywords)
 - Get back the most relevant results using AI
@@ -37,34 +37,27 @@ AI-powered app to upload, store, and search your documents using natural languag
 **Install Tesseract:**
 
 ```bash
-# Ubuntu / Debian
+# Ubuntu
 sudo apt install tesseract-ocr
 
-# macOS
-brew install tesseract
-
-# Windows
-# Download installer from:
-# https://github.com/UB-Mannheim/tesseract/wiki
 ```
 
 ### 2. Clone the project
 
 ```bash
-git clone https://github.com/your-username/second-brain.git
+git clone https://github.com/Karim-Anwr/Second_Brain_With_Ai.git
 cd second-brain
 ```
+
 
 ### 3. Create virtual environment
 
 ```bash
 python3 -m venv venv
 
-# Linux / macOS
+# Linux 
 source venv/bin/activate
 
-# Windows
-venv\Scripts\activate
 ```
 
 ### 4. Install dependencies
@@ -77,7 +70,6 @@ pip install -r requirements.txt
 
 ```bash
 cp .env.example .env
-# Edit .env if needed — defaults work fine for local development
 ```
 
 ### 6. Run the server
@@ -85,8 +77,6 @@ cp .env.example .env
 ```bash
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
-
-
 
 API is now running at: `http://localhost:8000`
 
@@ -104,10 +94,14 @@ curl -X POST http://localhost:8000/api/v1/upload \
 **Response:**
 ```json
 {
-  "document_id": "abc-123",
-  "file_name": "screenshot.png",
+  "memory_id": "mem_60b1104ae1da",
+  "file_name": "Screenshot_2023-08-07-10-25-38-76_680d03679600f7af0b4c700c6b270fe7.jpg",
   "file_type": "image",
-  "chunks_stored": 3,
+  "summary": "10:25 62 15 tea ا til Ga) 81 SY مقدمة صور ١ فيديو ١ قصة معالشرح يا La زرت يوماً أيكه طائر الشوق أغني ألمي يا حبيباً زرت يوماً أيكه طائر الشوق أغني ألمي يا حبيباً زرت يوماً أيكه طائر الشوق أغني ألمي لك إبطاء المذل المنعم وتجني القادر المحتكم والثواني جمرات في دمي إنني أعطيت ما استبقيت شيّ إنني أعطيت ...",
+  "tags": [],
+  "category": "other",
+  "importance": 0.5,
+  "total_chunks": 1,
   "status": "success"
 }
 ```
@@ -125,22 +119,28 @@ curl -X POST http://localhost:8000/api/v1/search \
 **Response:**
 ```json
 {
-  "query": "machine learning notes",
-  "total": 2,
+  "query": " كان في اغنيه الاطلال لام كلثوم هنا طائر الشوق أغني ألمي ",
+  "total": 1,
   "results": [
     {
-      "chunk_id": "abc-123_chunk_0",
-      "text": "Machine learning is a subset of AI...",
-      "file_name": "lecture_notes.png",
-      "file_path": "storage/uploads/abc-123.png",
-      "score": 0.91
+      "memory_id": "mem_60b1104ae1da",
+      "file_name": "Screenshot_2023-08-07-10-25-38-76_680d03679600f7af0b4c700c6b270fe7.jpg",
+      "file_path": "storage/uploads/f31fa555-281f-4e69-9a57-033c4284b09a.jpg",
+      "summary": "10:25 62 15 tea ا til Ga) 81 SY مقدمة صور ١ فيديو ١ قصة معالشرح يا La زرت يوماً أيكه طائر الشوق أغني ألمي يا حبيباً زرت يوماً أيكه طائر الشوق أغني ألمي يا حبيباً زرت يوماً أيكه طائر الشوق أغني ألمي لك إبطاء المذل المنعم وتجني القادر المحتكم والثواني جمرات في دمي إنني أعطيت ما استبقيت شيّ إنني أعطيت ...",
+      "matched_text": "10:25 62 15 tea ا til Ga) 81 SY مقدمة صور ١ فيديو ١ قصة معالشرح يا La زرت يوماً أيكه طائر الشوق أغني ألمي يا حبيباً زرت يوماً أيكه طائر الشوق أغني ألمي يا حبيباً زرت يوماً أيكه طائر الشوق أغني ألمي لك إبطاء المذل المنعم وتجني القادر المحتكم والثواني جمرات في دمي إنني أعطيت ما استبقيت شيّ إنني أعطيت ما استبقيت شيّ oy ol قيدك أدمى معصمى ١ آه من قيدك أدمى eee لم أبقيه وما أبقى علي ما احتفاظي بعهود لم تصنها وإلام الأسر والدنيا لدي إنني أعطيت ما استبقيت شي إنني أعطيت ما استبقيت شىّ an al قيدك أدمى معصمى آه من قيدك أدمى ee لم أبقيه وما أبقى علي ما احتفاظي بعهود لم تصنها وإلام الأسر والدنيا لدي 3 Q Al Discover Search Saved",
+      "tags": [
+        ""
+      ],
+      "created_at": "2026-05-18T19:21:37.469307",
+      "scores": {
+        "final": 0.535,
+        "semantic": 0.262,
+        "recency": 1,
+        "importance": 0.5
+      }
     }
-  ]
+  ],
+  "llm_answer": ""
 }
 ```
 
----
-
-### Interactive API Docs
-
-FastAPI generates automatic docs — open in your browser:
