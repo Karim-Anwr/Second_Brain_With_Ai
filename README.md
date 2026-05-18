@@ -83,8 +83,10 @@ cp .env.example .env
 ### 6. Run the server
 
 ```bash
-uvicorn app.main:app --reload
+uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
+
+
 
 API is now running at: `http://localhost:8000`
 
