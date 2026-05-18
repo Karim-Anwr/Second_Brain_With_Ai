@@ -78,8 +78,6 @@ cp .env.example .env
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-
-
 API is now running at: `http://localhost:8000`
 
 ---
