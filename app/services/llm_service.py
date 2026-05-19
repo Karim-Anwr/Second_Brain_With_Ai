@@ -1,68 +1,160 @@
-import google.generativeai as genai
+from groq import Groq
+import json
+import re
 from app.core.config import settings
-from app.core.exceptions import SecondBrainException
 
 
 class LLMService:
-    """
-    مسؤول عن التواصل مع Gemini API.
-    بياخد النتائج من الـ search ويكتب إجابة طبيعية.
-    """
 
     def __init__(self):
-        genai.configure(api_key=settings.gemini_api_key)
-        self.model = genai.GenerativeModel("gemini-2.0-flash")
-        print("✅ Gemini جاهز!")
+        self.client = Groq(api_key=settings.groq_api_key)
 
-    def answer_from_memories(
-        self,
-        query: str,
-        memories: list,
-    ) -> str:
-        """
-        بياخد سؤال المستخدم + النتائج من ChromaDB
-        ويكتب إجابة طبيعية بالعربي.
-        """
+        # Models
+        self.smart_model = "llama-3.3-70b-versatile"
+        self.fast_model = "llama-3.1-8b-instant"
 
-        # لو مفيش نتائج
-        if not memories:
-            return "معنديش أي معلومات عن ده في ذاكرتك."
+        print("✅ Groq LLM جاهز!")
 
-        # جهز الـ context من الـ memories
-        context = ""
-        for i, memory in enumerate(memories[:3]):  # أحسن 3 بس
-            context += f"""
-الذاكرة {i+1}:
-الملف: {memory.file_name}
-التاريخ: {memory.created_at}
-المحتوى: {memory.matched_text}
----"""
+    # ============================================================
+    # Helpers
+    # ============================================================
 
-        # الـ prompt
-        prompt = f"""أنت مساعد ذكي للذاكرة الشخصية.
-مهمتك إنك تجاوب على سؤال المستخدم بناءً على المعلومات المحفوظة في ذاكرته.
+    def _extract_json(self, text: str) -> dict:
+        """Safe JSON extraction from model output"""
+        text = text.strip()
 
-سؤال المستخدم: {query}
+        try:
+            match = re.search(r"\{.*\}", text, re.DOTALL)
+            if match:
+                return json.loads(match.group())
+            raise ValueError("No JSON found")
+        except Exception:
+            raise ValueError(f"Invalid JSON response: {text}")
 
-المعلومات المحفوظة:
-{context}
+    # ============================================================
+    # 1. Content Analysis
+    # ============================================================
 
-تعليمات:
-- اجاوب بالعربي بشكل طبيعي ومفيد
-- اذكر اسم الملف والتاريخ لو مناسب
-- لو المعلومات مش كافية قول ده بصراحة
-- متكررش المعلومات بالحرف — لخصها بأسلوبك
+    def analyze_content(self, text: str, file_name: str) -> dict:
+
+        prompt = f"""
+You are an expert AI content analyzer for a personal memory system.
+
+RULES:
+- Return ONLY valid JSON
+- No markdown, no explanation
+- Be precise and structured
+
+INPUT:
+File Name: {file_name}
+
+Text:
+{text[:3000]}
+
+OUTPUT JSON FORMAT:
+{{
+  "summary": "2-3 clear sentences",
+  "tags": ["max 6 tags"],
+  "category": "technology|science|business|education|health|religion|personal|other",
+  "key_concepts": ["max 5 concepts"],
+  "importance_score": 0.0,
+  "language": "ar|en|mixed",
+  "content_type": "lecture|book|article|note|conversation|code|other",
+  "cleaned_text": "cleaned version of text",
+  "main_topic": "one sentence topic"
+}}
+
+SCORING:
+0.0 = useless
+0.5 = normal
+0.8 = important
+1.0 = critical knowledge
 """
 
         try:
-            response = self.model.generate_content(prompt)
-            return response.text
+            response = self.client.chat.completions.create(
+                model=self.smart_model,
+                messages=[{"role": "user", "content": prompt}]
+            )
+
+            raw = response.choices[0].message.content
+
+            return self._extract_json(raw)
 
         except Exception as e:
-            return f"حصل خطأ في الـ LLM: {str(e)}"
+            print(f"⚠️ Analysis failed: {e}")
+            return self._default_analysis(text, file_name)
+
+    # ============================================================
+    # 2. Memory QA
+    # ============================================================
+
+    def answer_from_memories(self, query: str, memories: list) -> str:
+
+        if not memories:
+            return "معنديش أي معلومات عن ده في ذاكرتك."
+
+        context = ""
+
+        for i, m in enumerate(memories[:3]):
+            context += f"""
+Memory {i+1}:
+File: {m.file_name}
+Summary: {m.summary}
+Text: {getattr(m, 'matched_text', '')[:400]}
+--------------------
+"""
+
+        prompt = f"""
+You are a personal AI memory assistant.
+
+Answer the user based ONLY on provided memories.
+
+Question:
+{query}
+
+Memories:
+{context}
+
+Rules:
+- Be natural and helpful
+- Mention file names when relevant
+- If info is insufficient, say so clearly
+"""
+
+        try:
+            response = self.client.chat.completions.create(
+                model=self.smart_model,
+                messages=[{"role": "user", "content": prompt}]
+            )
+
+            return response.choices[0].message.content
+
+        except Exception as e:
+            return f"Error: {str(e)}"
+
+    # ============================================================
+    # 3. Fallback
+    # ============================================================
+
+    def _default_analysis(self, text, file_name):
+        return {
+            "summary": text[:200],
+            "tags": [],
+            "category": "other",
+            "key_concepts": [],
+            "importance_score": 0.5,
+            "language": "mixed",
+            "content_type": "other",
+            "cleaned_text": text,
+            "main_topic": file_name
+        }
 
 
+# ============================================================
 # Singleton
+# ============================================================
+
 _llm_service = None
 
 def get_llm_service():

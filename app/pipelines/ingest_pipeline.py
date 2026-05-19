@@ -1,10 +1,8 @@
 import hashlib
-from pathlib import Path
-from datetime import datetime
-
 from app.services.ocr_service import ocr_service
 from app.services.embedding_service import embedding_service
 from app.services.storage_service import storage_service
+from app.services.llm_service import llm_service
 from app.models.memory import Memory, FileType, Category, Language, MemoryResponse
 from app.utils.text_cleaner import clean_text, chunk_text
 from app.core.config import settings
@@ -23,6 +21,9 @@ class IngestPipeline:
 
         print(f"\n🚀 بدأ معالجة: {file_name}")
 
+        # ════════════════════════════════
+        # Step 1: OCR
+        # ════════════════════════════════
         print("📖 Step 1: OCR...")
         raw_text = ocr_service.extract_text(
             file_path=file_path,
@@ -30,10 +31,34 @@ class IngestPipeline:
         )
         print(f"   ✅ استخرج {len(raw_text.split())} كلمة")
 
-        print("🧹 Step 2: تنظيف النص...")
-        cleaned_text = clean_text(raw_text)
-        print(f"   ✅ النص اتنظف")
+        # ════════════════════════════════
+        # Step 2: Groq يحلل المحتوى
+        # ════════════════════════════════
+        print("🤖 Step 2: Groq بيحلل المحتوى...")
+        analysis = llm_service.analyze_content(
+            text=raw_text,
+            file_name=file_name
+        )
+        tags          = analysis.get("tags", [])
+        importance    = float(analysis.get("importance_score", 0.5))
+        summary       = analysis.get("summary", "")
+        cleaned_text  = analysis.get("cleaned_text", raw_text)
 
+        try:
+            category = Category(analysis.get("category", "other"))
+        except:
+            category = Category.OTHER
+
+        try:
+            language = Language(analysis.get("language", "mixed"))
+        except:
+            language = Language.MIXED
+
+        print(f"   ✅ Category: {category} | Tags: {tags[:3]}")
+
+        # ════════════════════════════════
+        # Step 3: Chunk
+        # ════════════════════════════════
         print("✂️  Step 3: تقسيم لـ chunks...")
         chunks = chunk_text(
             text=cleaned_text,
@@ -42,21 +67,19 @@ class IngestPipeline:
         )
         print(f"   ✅ {len(chunks)} chunk")
 
-        print("🏷️  Step 4: تصنيف...")
-        tags, category, importance, language, summary = \
-            self._classify(cleaned_text, file_name)
-        print(f"   ✅ Category: {category} | Tags: {tags[:3]}")
-
+        # ════════════════════════════════
+        # Step 4: Memory Object
+        # ════════════════════════════════
+        print("🧠 Step 4: بناء الـ Memory Object...")
         file_hash = self._calculate_hash(file_path)
 
-        print("🧠 Step 5: بناء الـ Memory Object...")
         memory = Memory(
             file_name=file_name,
             file_type=FileType(file_type),
             file_path=file_path,
             file_size=file_size,
             file_hash=file_hash,
-            raw_text=cleaned_text,
+            raw_text=raw_text,
             summary=summary,
             tags=tags,
             category=category,
@@ -67,11 +90,17 @@ class IngestPipeline:
             recency_score=1.0,
         )
 
-        print("🔢 Step 6: Embedding...")
+        # ════════════════════════════════
+        # Step 5: Embedding
+        # ════════════════════════════════
+        print("🔢 Step 5: Embedding...")
         embeddings = embedding_service.generate_batch(chunks)
         print(f"   ✅ {len(embeddings)} vector")
 
-        print("💾 Step 7: حفظ في ChromaDB...")
+        # ════════════════════════════════
+        # Step 6: Save
+        # ════════════════════════════════
+        print("💾 Step 6: حفظ في ChromaDB...")
         memory.chunk_ids = [
             f"{memory.id}_chunk_{i}"
             for i in range(len(chunks))
@@ -102,8 +131,35 @@ class IngestPipeline:
         """
         print(f"\n🚀 بدأ معالجة نص: {title}")
 
-        cleaned_text = clean_text(text)
+        # ════════════════════════════════
+        # Step 1: Groq يحلل المحتوى
+        # ════════════════════════════════
+        print("🤖 Step 1: Groq بيحلل المحتوى...")
+        analysis     = llm_service.analyze_content(
+            text=text,
+            file_name=title
+        )
+        tags          = analysis.get("tags", [])
+        importance    = float(analysis.get("importance_score", 0.5))
+        summary       = analysis.get("summary", "")
+        cleaned_text  = analysis.get("cleaned_text", text)
 
+        try:
+            category = Category(analysis.get("category", "other"))
+        except:
+            category = Category.OTHER
+
+        try:
+            language = Language(analysis.get("language", "mixed"))
+        except:
+            language = Language.MIXED
+
+        print(f"   ✅ Category: {category} | Tags: {tags[:3]}")
+
+        # ════════════════════════════════
+        # Step 2: Chunk
+        # ════════════════════════════════
+        print("✂️  Step 2: تقسيم لـ chunks...")
         chunks = chunk_text(
             text=cleaned_text,
             chunk_size=settings.max_chunk_size,
@@ -111,16 +167,16 @@ class IngestPipeline:
         )
         print(f"   ✅ {len(chunks)} chunk")
 
-        tags, category, importance, language, summary = \
-            self._classify(cleaned_text, title)
-
+        # ════════════════════════════════
+        # Step 3: Memory Object
+        # ════════════════════════════════
         memory = Memory(
             file_name=title,
             file_type=FileType.TEXT,
             file_path="",
             file_size=len(text),
             file_hash="",
-            raw_text=cleaned_text,
+            raw_text=text,
             summary=summary,
             tags=tags,
             category=category,
@@ -131,15 +187,26 @@ class IngestPipeline:
             recency_score=1.0,
         )
 
+        # ════════════════════════════════
+        # Step 4: Embedding
+        # ════════════════════════════════
+        print("🔢 Step 3: Embedding...")
         embeddings = embedding_service.generate_batch(chunks)
+        print(f"   ✅ {len(embeddings)} vector")
 
+        # ════════════════════════════════
+        # Step 5: Save
+        # ════════════════════════════════
+        print("💾 Step 4: حفظ في ChromaDB...")
         memory.chunk_ids = [
             f"{memory.id}_chunk_{i}"
             for i in range(len(chunks))
         ]
         storage_service.save_memory(memory=memory, embeddings=embeddings)
 
-        print(f"✨ خلص! Memory ID: {memory.id}")
+        total = storage_service.get_total_memories()
+        print(f"   ✅ اتحفظ! إجمالي الـ memories: {total}")
+        print(f"\n✨ خلص! Memory ID: {memory.id}")
 
         return MemoryResponse(
             memory_id=memory.id,
@@ -152,87 +219,6 @@ class IngestPipeline:
             total_chunks=memory.total_chunks,
             status="success"
         )
-
-    def _classify(self, text: str, file_name: str):
-        text_lower = text.lower()
-        words      = text_lower.split()
-
-        tech_keywords = [
-            "python", "code", "api", "machine learning", "ai",
-            "data", "model", "neural", "deep learning", "backend",
-            "frontend", "database", "sql", "algorithm", "programming"
-        ]
-        science_keywords = [
-            "biology", "chemistry", "physics", "math",
-            "equation", "theorem", "experiment"
-        ]
-        business_keywords = [
-            "marketing", "sales", "revenue", "startup",
-            "business", "strategy", "management", "finance"
-        ]
-        religion_keywords = [
-            "قرآن", "حديث", "إسلام", "صلاة", "الله",
-            "quran", "hadith", "islam", "prayer"
-        ]
-
-        tags = []
-        for kw in tech_keywords:
-            if kw in text_lower:
-                tags.append(kw)
-        for kw in science_keywords:
-            if kw in text_lower:
-                tags.append(kw)
-        for kw in business_keywords:
-            if kw in text_lower:
-                tags.append(kw)
-        for kw in religion_keywords:
-            if kw in text_lower:
-                tags.append(kw)
-
-        tags = list(set(tags))[:10]
-
-        if any(k in text_lower for k in tech_keywords):
-            category = Category.TECHNOLOGY
-        elif any(k in text_lower for k in science_keywords):
-            category = Category.SCIENCE
-        elif any(k in text_lower for k in business_keywords):
-            category = Category.BUSINESS
-        elif any(k in text_lower for k in religion_keywords):
-            category = Category.RELIGION
-        else:
-            category = Category.OTHER
-
-        word_count = len(words)
-        if word_count > 500:
-            importance = 0.8
-        elif word_count > 200:
-            importance = 0.6
-        elif word_count > 50:
-            importance = 0.5
-        else:
-            importance = 0.3
-
-        arabic_chars = sum(
-            1 for c in text if '\u0600' <= c <= '\u06FF'
-        )
-        english_chars = sum(
-            1 for c in text if c.isascii() and c.isalpha()
-        )
-
-        if arabic_chars > english_chars:
-            language = Language.ARABIC
-        elif english_chars > arabic_chars:
-            language = Language.ENGLISH
-        else:
-            language = Language.MIXED
-
-        sentences = text.replace('،', '.').split('.')
-        sentences = [s.strip() for s in sentences if len(s.strip()) > 20]
-        summary   = '. '.join(sentences[:3])
-        if len(summary) > 300:
-            summary = summary[:300] + "..."
-
-        return tags, category, importance, language, summary
 
     def _calculate_hash(self, file_path: str) -> str:
         with open(file_path, "rb") as f:

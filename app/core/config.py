@@ -17,8 +17,9 @@ class Settings(BaseSettings):
     max_chunk_size: int = 500
     chunk_overlap: int = 50
     default_top_k: int = 5
-
+    
     gemini_api_key: str = ""
+    groq_api_key: str = ""
 
     class Config:
         env_file = ".env"

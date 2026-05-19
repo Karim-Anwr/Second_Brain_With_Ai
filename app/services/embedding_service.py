@@ -12,8 +12,7 @@ class EmbeddingService:
     ليه class؟
     عشان الموديل بيتحمل مرة واحدة بس في الـ __init__
     مش كل مرة بنعمل embedding.
-    تحميل الموديل بياخد 10-30 ثانية —
-    مش هنعمل ده كل request!
+    تحميل الموديل 
     """
 
     def __init__(self, model_name: str = None):

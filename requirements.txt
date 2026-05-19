@@ -11,4 +11,6 @@ pydantic==2.7.1
 aiofiles==23.2.1
 sentence-transformers==3.0.0
 google-generativeai
+groq
+
 

@@ -128,7 +128,7 @@ class StorageService:
             # ابحث في ChromaDB
             results = self.collection.query(
                 query_embeddings=[query_embedding],
-                n_results=min(top_k * 2, 20),
+                n_results=min(top_k * 2, 300),  # بنجيب ضعف العدد عشان بعدين نعمل ranking
                 # بنجيب ضعف العدد عشان بعدين نعمل ranking
                 # ونرجع أحسن top_k بس
                 where=where,
@@ -213,10 +213,10 @@ class StorageService:
         popularity = min(access_count / 10.0, 1.0)
 
         score = (
-            semantic_score   * 0.40 +
-            recency_score    * 0.30 +
+            semantic_score   * 0.50 +
+            recency_score    * 0.25 +
             importance_score * 0.20 +
-            popularity       * 0.10
+            popularity       * 0.05
         )
 
         # لو المستخدم عملها favorite — بوص دايماً
