@@ -1,8 +1,6 @@
 import hashlib
 import chromadb
-from pathlib import Path
 from datetime import datetime
-
 from app.core.config import settings
 from app.core.exceptions import StorageException, DocumentNotFoundException
 from app.models.memory import Memory, MemorySearchResult
@@ -10,99 +8,109 @@ from app.models.memory import Memory, MemorySearchResult
 
 class StorageService:
     """
-    مسؤول عن حفظ وجلب الـ memories.
+    بيحفظ ويجيب الـ chunks من ChromaDB.
     
-    بيتعامل مع حاجتين:
-    1. ChromaDB  ← الـ vectors والـ metadata
-    2. File System ← الملفات الأصلية
-    
-    ليه فصلناهم؟
-    لأن ChromaDB ممتازة في الـ vector search
-    بس مش المفروض تحفظ فيها ملفات كبيرة.
+    التحسينات:
+    - chunk-level storage (مش memory-level)
+    - metadata غني
+    - hybrid scoring
+    - deduplication
     """
 
     def __init__(self):
-        # اتصل بـ ChromaDB
         self.client = chromadb.PersistentClient(
             path=settings.chroma_dir
         )
-
-        # جيب أو اعمل الـ collection
         self.collection = self.client.get_or_create_collection(
             name=settings.chroma_collection,
             metadata={"hnsw:space": "cosine"}
-            # cosine = بنقيس التشابه بالزاوية مش المسافة
-            # الأنسب للـ text embeddings
         )
-
         print(f"✅ ChromaDB جاهز — Collection: {settings.chroma_collection}")
 
     # ============================================================
-    # حفظ Memory جديدة
+    # حفظ Memory
     # ============================================================
 
-    def save_memory(self, memory: Memory, embeddings: list[list[float]]) -> bool:
+    def save_memory(
+        self,
+        memory: Memory,
+        embeddings: list[list[float]],
+        searchable_texts: list[str] = None,
+    ) -> bool:
         """
-        بيحفظ الـ Memory في ChromaDB.
+        بيحفظ كل chunk كـ record منفصل في ChromaDB.
         
-        كل chunk بيتحفظ كـ record منفصل مع:
-        - الـ embedding بتاعه
-        - الـ metadata بتاعت الـ memory كلها
-        
-        ليه كل chunk لوحده؟
-        عشان الـ search يرجع الـ chunk الأدق
-        مش الملف كله.
+        الجديد: بيحفظ الـ searchable_text مع الـ chunk
+        عشان الـ retrieval يبقى أدق.
         """
         try:
             ids        = []
             documents  = []
             metadatas  = []
 
-            for i, (chunk, embedding) in enumerate(
-                zip(memory.chunks, embeddings)
-            ):
+            for i, chunk in enumerate(memory.chunks):
                 chunk_id = f"{memory.id}_chunk_{i}"
 
+                # الـ document اللي بيتحفظ هو الـ searchable_text
+                # مش الـ chunk الخام
+                doc = (
+                    searchable_texts[i]
+                    if searchable_texts and i < len(searchable_texts)
+                    else chunk
+                )
+
                 ids.append(chunk_id)
-                documents.append(chunk)
+                documents.append(doc)
                 metadatas.append({
-                    # معلومات الـ memory
-                    "memory_id":       memory.id,
-                    "file_name":       memory.file_name,
-                    "file_type":       memory.file_type.value,
-                    "file_path":       memory.file_path,
-                    "created_at":      memory.created_at,
+                    # ── Identity ──
+                    "memory_id":    memory.id,
+                    "chunk_id":     chunk_id,
+                    "chunk_index":  i,
+                    "total_chunks": memory.total_chunks,
 
-                    # AI fields
-                    "summary":         memory.summary,
-                    "category":        memory.category.value,
+                    # ── File Info ──
+                    "file_name":    memory.file_name,
+                    "file_type":    memory.file_type.value,
+                    "file_path":    memory.file_path,
+                    "created_at":   memory.created_at,
+
+                    # ── Content ──
+                    "chunk_text":   chunk,
+                    "summary":      memory.summary[:500],
+                    "main_topic":   getattr(memory, 'main_topic', ''),
+                    "language":     memory.language.value,
+
+                    # ── AI Fields ──
+                    "tags":         ",".join(memory.tags),
+                    "keywords":     ",".join(
+                        getattr(memory, 'keywords', [])
+                    ),
+                    "entities":     ",".join(
+                        getattr(memory, 'entities', [])
+                    ),
+                    "topics":       ",".join(
+                        getattr(memory, 'topics', [])
+                    ),
+                    "category":     memory.category.value,
+                    "content_type": getattr(memory, 'content_type', ''),
                     "importance_score": memory.importance_score,
-                    "language":        memory.language.value,
-                    "tags":            ",".join(memory.tags),
-                    # ليه join؟ ChromaDB مش بتدعم lists في الـ metadata
 
-                    # Behavior fields
-                    "access_count":    memory.access_count,
-                    "is_favorite":     str(memory.is_favorite),
-                    "recency_score":   memory.recency_score,
-
-                    # Chunk info
-                    "chunk_index":     i,
-                    "total_chunks":    memory.total_chunks,
+                    # ── Behavior ──
+                    "access_count":  memory.access_count,
+                    "recency_score": memory.recency_score,
+                    "is_favorite":   str(memory.is_favorite),
                 })
 
-            # حفظ في ChromaDB
             self.collection.add(
                 ids=ids,
                 documents=documents,
                 embeddings=embeddings,
                 metadatas=metadatas,
             )
-
             return True
 
         except Exception as e:
-            raise StorageException(f"فشل حفظ الـ memory: {str(e)}")
+            raise StorageException(f"فشل حفظ الـ memory: {e}")
 
     # ============================================================
     # البحث
@@ -111,211 +119,226 @@ class StorageService:
     def search(
         self,
         query_embedding: list[float],
-        top_k: int = 5,
-        filters: dict = None
+        top_k: int = 10,
+        filters: dict = None,
     ) -> list[MemorySearchResult]:
         """
-        بيدور على أقرب memories للـ query.
-        
-        الـ filters بتخليك تضيق البحث:
-        مثال: ابحث بس في الـ technology category
-        أو بس في آخر أسبوع
+        بيدور على أقرب chunks للـ query.
         """
         try:
-            # جهز الـ where clause لو فيه filters
             where = self._build_filters(filters) if filters else None
 
-            # ابحث في ChromaDB
+            n_results = min(top_k * 3, 40)
+            count     = self.collection.count()
+            if count == 0:
+                return []
+            n_results = min(n_results, count)
+
             results = self.collection.query(
                 query_embeddings=[query_embedding],
-                n_results=min(top_k * 2, 300),  # بنجيب ضعف العدد عشان بعدين نعمل ranking
-                # بنجيب ضعف العدد عشان بعدين نعمل ranking
-                # ونرجع أحسن top_k بس
+                n_results=n_results,
                 where=where,
                 include=["documents", "metadatas", "distances"]
             )
 
-            # حول النتائج لـ MemorySearchResult
             memories = []
-            seen_memory_ids = set()
-            # عشان ما نرجعش نفس الـ memory مرتين
-            # (ممكن يجيب chunk_0 وchunk_1 من نفس الملف)
+            seen_memory_ids = {}
 
             for doc, meta, distance in zip(
                 results["documents"][0],
                 results["metadatas"][0],
                 results["distances"][0],
             ):
-                memory_id = meta["memory_id"]
+                memory_id      = meta["memory_id"]
+                semantic_score = max(0.0, 1 - distance)
 
-                # لو الـ memory دي اتضافت قبل كده، skip
-                if memory_id in seen_memory_ids:
-                    continue
-                seen_memory_ids.add(memory_id)
-
-                # حول الـ distance لـ similarity score
-                # ChromaDB بترجع distance — كلما قل = أقرب
-                semantic_score = 1 - distance
-
-                # احسب الـ final score
-                final_score = self._calculate_final_score(
+                final_score = self._calculate_score(
                     semantic_score=semantic_score,
                     recency_score=float(meta.get("recency_score", 0.5)),
-                    importance_score=float(meta.get("importance_score", 0.5)),
+                    importance=float(meta.get("importance_score", 0.5)),
                     access_count=int(meta.get("access_count", 0)),
                     is_favorite=meta.get("is_favorite", "False") == "True",
                 )
 
-                memories.append(MemorySearchResult(
-                    memory_id=memory_id,
-                    file_name=meta["file_name"],
-                    file_path=meta["file_path"],
-                    summary=meta.get("summary", ""),
-                    matched_text=doc,
-                    tags=meta.get("tags", "").split(","),
-                    created_at=meta["created_at"],
-                    final_score=round(final_score, 3),
-                    semantic_score=round(semantic_score, 3),
-                    recency_score=round(float(meta.get("recency_score", 0.5)), 3),
-                    importance_score=round(float(meta.get("importance_score", 0.5)), 3),
-                ))
+                # لو نفس الـ memory اتجابت، خد الـ chunk الأعلى score
+                if memory_id in seen_memory_ids:
+                    existing = seen_memory_ids[memory_id]
+                    if final_score > existing.final_score:
+                        seen_memory_ids[memory_id] = self._make_result(
+                            meta, doc, semantic_score, final_score
+                        )
+                    continue
+
+                result = self._make_result(
+                    meta, doc, semantic_score, final_score
+                )
+                seen_memory_ids[memory_id] = result
 
             # رتب بالـ final score
+            memories = list(seen_memory_ids.values())
             memories.sort(key=lambda x: x.final_score, reverse=True)
 
             return memories[:top_k]
 
         except Exception as e:
-            raise StorageException(f"فشل الـ search: {str(e)}")
+            raise StorageException(f"فشل الـ search: {e}")
+
+    def search_raw_chunks(
+        self,
+        query_embedding: list[float],
+        top_k: int = 20,
+        filters: dict = None,
+    ) -> list[dict]:
+        """
+        بيرجع الـ raw chunks بدون deduplication.
+        بيستخدمه الـ reranker.
+        """
+        try:
+            where     = self._build_filters(filters) if filters else None
+            count     = self.collection.count()
+            if count == 0:
+                return []
+            n_results = min(top_k, count)
+
+            results = self.collection.query(
+                query_embeddings=[query_embedding],
+                n_results=n_results,
+                where=where,
+                include=["documents", "metadatas", "distances"]
+            )
+
+            chunks = []
+            for doc, meta, distance in zip(
+                results["documents"][0],
+                results["metadatas"][0],
+                results["distances"][0],
+            ):
+                chunks.append({
+                    "document":       doc,
+                    "metadata":       meta,
+                    "semantic_score": max(0.0, 1 - distance),
+                    "chunk_text":     meta.get("chunk_text", doc),
+                })
+
+            return chunks
+
+        except Exception as e:
+            raise StorageException(f"فشل الـ raw search: {e}")
 
     # ============================================================
-    # Smart Ranking
+    # Scoring
     # ============================================================
 
-    def _calculate_final_score(
+    def _calculate_score(
         self,
         semantic_score: float,
         recency_score: float,
-        importance_score: float,
+        importance: float,
         access_count: int,
         is_favorite: bool,
     ) -> float:
         """
-        بيحسب الـ score النهائي من 4 عوامل.
-        
-        الأوزان دي ممكن تتعدل مع الوقت:
-        - semantic  0.4  ← الأهم — مدى قرب المعنى
-        - recency   0.3  ← الأحدث أهم
-        - importance 0.2 ← AI قيّمها بأهمية عالية
-        - popularity 0.1 ← بترجعلها كتير
+        الأوزان الجديدة:
+        semantic  55% ← الأهم
+        recency   20%
+        importance 15%
+        popularity 10%
         """
-        # popularity من 0 لـ 1
-        popularity = min(access_count / 10.0, 1.0)
+        popularity  = min(access_count / 10.0, 1.0)
 
         score = (
-            semantic_score   * 0.50 +
-            recency_score    * 0.25 +
-            importance_score * 0.20 +
-            popularity       * 0.05
+            semantic_score * 0.55 +
+            recency_score  * 0.20 +
+            importance     * 0.15 +
+            popularity     * 0.10
         )
 
-        # لو المستخدم عملها favorite — بوص دايماً
         if is_favorite:
-            score = min(score + 0.15, 1.0)
+            score = min(score + 0.10, 1.0)
 
-        return score
+        return round(score, 4)
+
+    def _make_result(
+        self,
+        meta: dict,
+        doc: str,
+        semantic_score: float,
+        final_score: float,
+    ) -> MemorySearchResult:
+        return MemorySearchResult(
+            memory_id=meta["memory_id"],
+            file_name=meta["file_name"],
+            file_path=meta.get("file_path", ""),
+            summary=meta.get("summary", ""),
+            matched_text=meta.get("chunk_text", doc),
+            tags=meta.get("tags", "").split(","),
+            created_at=meta.get("created_at", ""),
+            final_score=final_score,
+            semantic_score=round(semantic_score, 4),
+            recency_score=round(
+                float(meta.get("recency_score", 0.5)), 4
+            ),
+            importance_score=round(
+                float(meta.get("importance_score", 0.5)), 4
+            ),
+        )
 
     # ============================================================
-    # Filters Builder
+    # Filters
     # ============================================================
 
-    def _build_filters(self, filters: dict) -> dict:
-        """
-        بيحول الـ filters لـ ChromaDB where clause.
-        
-        مثال:
-        filters = {"category": "technology", "language": "ar"}
-        →
-        {"$and": [
-            {"category": {"$eq": "technology"}},
-            {"language": {"$eq": "ar"}}
-        ]}
-        """
+    def _build_filters(self, filters: dict):
         conditions = []
 
-        if "category" in filters:
-            conditions.append(
-                {"category": {"$eq": filters["category"]}}
-            )
-        if "language" in filters:
-            conditions.append(
-                {"language": {"$eq": filters["language"]}}
-            )
-        if "file_type" in filters:
-            conditions.append(
-                {"file_type": {"$eq": filters["file_type"]}}
-            )
+        for key in ["category", "language", "file_type", "content_type"]:
+            if key in filters:
+                conditions.append({key: {"$eq": filters[key]}})
+
         if "is_favorite" in filters:
             conditions.append(
                 {"is_favorite": {"$eq": str(filters["is_favorite"])}}
             )
 
-        if len(conditions) == 0:
+        if not conditions:
             return None
         if len(conditions) == 1:
             return conditions[0]
         return {"$and": conditions}
 
     # ============================================================
-    # Update — تحديث الـ access_count
+    # Helpers
     # ============================================================
 
     def increment_access_count(self, memory_id: str):
-        """
-        كل ما المستخدم يفتح memory، بنزود الـ access_count.
-        ده بيخلي النظام يتعلم من سلوكك.
-        """
         try:
-            # جيب كل الـ chunks بتاعت الـ memory دي
             results = self.collection.get(
                 where={"memory_id": {"$eq": memory_id}},
                 include=["metadatas"]
             )
-
             if not results["ids"]:
-                raise DocumentNotFoundException(
-                    f"الـ memory مش موجودة: {memory_id}"
-                )
+                return
 
-            # حدّث كل chunk
             for chunk_id, meta in zip(
                 results["ids"], results["metadatas"]
             ):
-                meta["access_count"] = int(meta.get("access_count", 0)) + 1
+                meta["access_count"] = (
+                    int(meta.get("access_count", 0)) + 1
+                )
                 self.collection.update(
                     ids=[chunk_id],
                     metadatas=[meta]
                 )
-
-        except DocumentNotFoundException:
-            raise
-        except Exception as e:
-            raise StorageException(f"فشل تحديث الـ access count: {str(e)}")
-
-    # ============================================================
-    # Helpers
-    # ============================================================
+        except Exception:
+            pass
 
     def get_total_memories(self) -> int:
-        """كام memory محفوظة؟"""
-        return self.collection.count()
+        try:
+            return self.collection.count()
+        except:
+            return 0
 
     @staticmethod
     def calculate_file_hash(file_path: str) -> str:
-        """
-        بيحسب MD5 hash للملف.
-        لو نفس الـ hash موجود = نفس الملف اترفع قبل كده.
-        """
         with open(file_path, "rb") as f:
             return hashlib.md5(f.read()).hexdigest()
 

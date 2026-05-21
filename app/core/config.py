@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     chroma_collection: str = "second_brain"
 
     # AI
-    embedding_model: str = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2" 
+    embedding_model: str = "BAAI/bge-m3" 
     max_chunk_size: int = 500
     chunk_overlap: int = 50
     default_top_k: int = 5
