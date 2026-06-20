@@ -17,6 +17,23 @@ class TextUploadRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
     text:  str = Field(..., min_length=1)
 
+class LinkUploadRequest(BaseModel):
+    url: str = Field(..., min_length=5)
+
+
+@router.post("/upload/link", response_model=MemoryResponse)
+async def upload_link(request: LinkUploadRequest):
+    """
+    يستقبل لينك (يوتيوب، تيك توك، أو أي موقع) ويحفظه كـ memory.
+    """
+    try:
+        result = ingest_pipeline.process_link(url=request.url)
+        return result
+    except StorageException as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.post("/upload", response_model=MemoryResponse)
 async def upload_file(file: UploadFile = File(...)):

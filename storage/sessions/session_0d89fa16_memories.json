@@ -1,0 +1,25 @@
+[
+  {
+    "id": "exmem_8ba58dc7",
+    "session_id": "session_0d89fa16",
+    "memory_type": "personal_info",
+    "content": "ذكرى كريم Ai eng",
+    "summary": "كريم طالب في السنة الثالثة في قسم الهندسة",
+    "keywords": [
+      "كريم",
+      "Ai eng",
+      "هندسة"
+    ],
+    "entities": [
+      "كريم",
+      "Ai eng"
+    ],
+    "topics": [
+      "هندسة",
+      "دراسة"
+    ],
+    "importance": 0.85,
+    "created_at": "2026-05-24T15:43:30.587380",
+    "source_message_id": ""
+  }
+]

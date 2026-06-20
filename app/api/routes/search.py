@@ -1,7 +1,10 @@
+from app.services import storage_service
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from app.pipelines.search_pipeline import search_pipeline
 from app.core.exceptions import StorageException
+from app.services.graph_service import graph_service
+
 
 
 router = APIRouter()
@@ -63,14 +66,67 @@ async def search_memories(request: SearchRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/memories/favorites")
-async def get_favorites():
-    """جيب كل الـ favorites"""
+class FavoriteRequest(BaseModel):
+    memory_id: str
+    is_favorite: bool = True
+
+
+@router.post("/memories/favorite")
+async def toggle_favorite(request: FavoriteRequest):
+    """
+    يعمل toggle لحالة الـ favorite لذكرى معينة.
+    الذكريات المفضلة بتتعلى تلقائياً في ترتيب البحث.
+    """
     try:
-        result = search_pipeline.search_by_filter(
-            is_favorite=True,
-            top_k=20,
+        success = storage_service.set_favorite(
+            memory_id=request.memory_id,
+            is_favorite=request.is_favorite,
         )
-        return result
+        if not success:
+            raise HTTPException(status_code=404, detail="الذكرى مش موجودة")
+        return {
+            "memory_id":   request.memory_id,
+            "is_favorite": request.is_favorite,
+            "status":      "updated",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+
+class LinkMemoriesRequest(BaseModel):
+    from_id: str
+    to_id:   str
+
+
+@router.get("/memories/{memory_id}/related")
+async def get_related_memories(memory_id: str, depth: int = 1):
+    """
+    يجيب الذكريات المرتبطة بذكرى معينة.
+    depth=1 → جيران مباشرين، depth=2 → جيران الجيران كمان.
+    """
+    try:
+        related = graph_service.get_related(memory_id, depth=depth)
+        return {
+            "memory_id": memory_id,
+            "total":     len(related),
+            "related":   related,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/memories/link")
+async def link_memories(request: LinkMemoriesRequest):
+    """ربط يدوي بين ذكريتين."""
+    try:
+        success = graph_service.add_edge(
+            from_id=request.from_id,
+            to_id=request.to_id,
+            relation_type="manual",
+            score=1.0,
+        )
+        return {"status": "linked" if success else "failed"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

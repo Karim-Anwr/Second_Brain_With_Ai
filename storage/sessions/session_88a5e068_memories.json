@@ -1,0 +1,28 @@
+[
+  {
+    "id": "exmem_ba43b51a",
+    "session_id": "session_88a5e068",
+    "memory_type": "conversation",
+    "content": "الذكرى بشكل واضح ومفيد",
+    "summary": "ملخص قصير",
+    "keywords": [
+      "تشاءوم",
+      "انسان",
+      "افكار",
+      "معزلة"
+    ],
+    "entities": [
+      "الصورة",
+      "التاريخ",
+      "اسم الصورة"
+    ],
+    "topics": [
+      "انسان",
+      "افكار",
+      "معزلة"
+    ],
+    "importance": 0.85,
+    "created_at": "2026-05-24T15:48:42.874826",
+    "source_message_id": ""
+  }
+]

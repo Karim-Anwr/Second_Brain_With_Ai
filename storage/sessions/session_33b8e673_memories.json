@@ -1,0 +1,23 @@
+[
+  {
+    "id": "exmem_c9cf0c42",
+    "session_id": "session_33b8e673",
+    "memory_type": "fact",
+    "content": "ياعم انا حافظ فيلم الزاكره عندك",
+    "summary": "ملخص قصير",
+    "keywords": [
+      "فيلم",
+      "الذاكرة"
+    ],
+    "entities": [
+      "المستخدم"
+    ],
+    "topics": [
+      "فيلم",
+      "الذاكرة"
+    ],
+    "importance": 0.85,
+    "created_at": "2026-05-24T15:53:46.471760",
+    "source_message_id": ""
+  }
+]

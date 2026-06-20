@@ -1,0 +1,25 @@
+[
+  {
+    "id": "exmem_ff70d691",
+    "session_id": "session_b788ba00",
+    "memory_type": "personal_info",
+    "content": "انا طالب ف كليه حاسيبات قسم Ai",
+    "summary": "ملخص قصير",
+    "keywords": [
+      "طالب",
+      "كليه حاسيبات",
+      "قسم Ai"
+    ],
+    "entities": [
+      "طالب",
+      "كليه حاسيبات",
+      "قسم Ai"
+    ],
+    "topics": [
+      "ذكاء اصطناعي"
+    ],
+    "importance": 0.85,
+    "created_at": "2026-05-24T15:45:08.630948",
+    "source_message_id": ""
+  }
+]

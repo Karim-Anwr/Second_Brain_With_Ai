@@ -1,35 +1,34 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.routes import upload, search
+from app.api.routes import upload, search, chat
 from app.core.config import settings
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    بيشتغل مرة واحدة وقت الـ startup.
-    بيحمل الـ models في الـ background.
-    """
     print(" جاري تحميل الـ models...")
-    
-    # حمّل الـ embedding model
+
     from app.services.embedding_service import embedding_service
     print(" Embedding model جاهز")
-    
-    # حمّل الـ storage
+
     from app.services.storage_service import storage_service
     print(" ChromaDB جاهز")
-    
+
+    from app.services.llm_service import llm_service
+    print(" LLM جاهز")
+
+    from app.services.session_service import session_service
+    print(" Session Service جاهز")
+
     print(" الـ App جاهز!")
-    
-    yield  # هنا الـ app بيشتغل
+    yield
 
 
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
-    description="AI-powered Personal Memory Search Engine",
+    description="AI-powered Personal Memory Assistant",
     lifespan=lifespan,
 )
 
@@ -40,16 +39,39 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(upload.router, prefix="/api/v1", tags=["Upload"])
-app.include_router(search.router, prefix="/api/v1", tags=["Search"])
+# ── Routes ──
+app.include_router(
+    upload.router,
+    prefix="/api/v1",
+    tags=["Upload"]
+)
+app.include_router(
+    search.router,
+    prefix="/api/v1",
+    tags=["Search"]
+)
+app.include_router(
+    chat.router,
+    prefix="/api/v1",
+    tags=["Chat"]  # ← جديد
+)
+
 
 @app.get("/")
 def root():
     return {
-        "app":    settings.app_name,
-        "status": "running ",
-        "docs":   "/docs",
+        "app":     settings.app_name,
+        "version": settings.app_version,
+        "status":  "running ",
+        "docs":    "/docs",
+        "endpoints": {
+            "upload":   "/api/v1/upload",
+            "search":   "/api/v1/search",
+            "chat":     "/api/v1/chat",
+            "sessions": "/api/v1/sessions",
+        }
     }
+
 
 @app.get("/health")
 def health():

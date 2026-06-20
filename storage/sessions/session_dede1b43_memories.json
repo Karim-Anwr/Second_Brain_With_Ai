@@ -1,0 +1,30 @@
+[
+  {
+    "id": "exmem_ad5a9cd9",
+    "session_id": "session_dede1b43",
+    "memory_type": "fact",
+    "content": "الذكرى بشكل واضح ومفيد",
+    "summary": "ملخص قصير",
+    "keywords": [
+      "صورة",
+      "متحان",
+      "رياضة"
+    ],
+    "entities": [
+      "صورة",
+      "شاب",
+      "بدلة",
+      "قبعة",
+      "علم",
+      "قوس قزح"
+    ],
+    "topics": [
+      "صورة",
+      "متحان",
+      "رياضة"
+    ],
+    "importance": 0.85,
+    "created_at": "2026-06-18T10:43:00.897954",
+    "source_message_id": ""
+  }
+]

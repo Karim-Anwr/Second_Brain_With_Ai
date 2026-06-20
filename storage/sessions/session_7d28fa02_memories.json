@@ -1,0 +1,24 @@
+[
+  {
+    "id": "exmem_e8f64f32",
+    "session_id": "session_7d28fa02",
+    "memory_type": "conversation",
+    "content": "ذكرى أغنية لجورج وسوف المعروف باسم أبو وديع",
+    "summary": "ملخص قصير",
+    "keywords": [
+      "أغنية",
+      "أبو وديع"
+    ],
+    "entities": [
+      "جورج وسوف",
+      "أبو وديع"
+    ],
+    "topics": [
+      "أغاني",
+      "ذكريات"
+    ],
+    "importance": 0.85,
+    "created_at": "2026-06-20T11:11:34.118807",
+    "source_message_id": ""
+  }
+]

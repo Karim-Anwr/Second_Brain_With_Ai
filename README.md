@@ -1,48 +1,67 @@
 #  Second Brain — Personal Memory Search Engine
 
-AI-powered app to upload, store, and search your documents using natural language.
+نظام ذاكرة شخصية مدعوم بالذكاء الاصطناعي يتيح لك رفع الصور وملفات `PDF` والنصوص والروابط من `YouTube` و`TikTok` والمواقع الإلكترونية. يفهم النظام المحتوى ويحوّله إلى معرفة قابلة للبحث، مما يسمح لك بالعثور على المعلومات باستخدام اللغة الطبيعية والتحدث معه كمساعد شخصي يتذكر كل ما حفظته مسبقًا.
+
+---
+## Core Idea
+
+المشكلة الأصلية: بتحفظ `screenshot` `files` `links`  `notes`  كتير مهمه وبعدين بتنسى فين حفظتها أو مقدرش تلاقيها. الحل: نظام بيفهم محتوى كل حاجة بتحفظها (مش بس بيخزنها)، ويقدر يرجعلك بيها لما تسأل بأي صياغة، حتى لو مش فاكر الكلمات بالظبط.
 
 ---
 
-##  What It Does
+## General Architecture
 
-- Upload screenshots, text , link ,images, and PDFs
-- Extract text automatically using OCR
-- Search your files using normal sentences (not keywords)
-- Get back the most relevant results using AI
+```
+رفع محتوى (صورة/PDF/نص/لينك)
+        ↓
+   Ingestion Pipeline
+   (OCR + Vision + LLM Analysis + Chunking)
+        ↓
+   Embedding (BGE-M3) → ChromaDB
+        ↓
+   Memory Graph (ربط تلقائي بذكريات مشابهة)
 
+────────────────────────────
+
+سؤال المستخدم
+        ↓
+   Search Pipeline
+   (فهم السؤال → توسيع → Hybrid Retrieval → Rerank)
+        ↓
+   رد إنساني من الـ LLM
+
+────────────────────────────
+
+محادثة كاملة (Chat)
+        ↓
+   Short-term (آخر رسائل) + Long-term (ChromaDB) + Episodic (ذكريات الجلسة)
+        ↓
+   Context Builder → LLM → رد + استخراج ذكريات مهمة تلقائياً
+```
+
+---
 ---
 
 ##  Tech Stack
 
-| Component        | Technology                          |
-|-----------------|-------------------------------------|
-| Backend API      | FastAPI                             |
-| OCR              | Tesseract + PyMuPDF                 |
-| AI Embeddings    | Sentence Transformers               |
-| Vector Database  | ChromaDB                            |
-| Language         | Python 3.11+                        |
+| الطبقة | التقنية | السبب |
+|---|---|---|
+| API | FastAPI | سريع، توثيق تلقائي (Swagger) |
+| OCR | Tesseract + PyMuPDF | استخراج نص من صور وPDF |
+| Vision | Groq Vision | فهم بصري للصور (مش بس النص المكتوب) |
+| Embeddings | BGE-M3 (Sentence Transformers) | يدعم العربي والإنجليزي بقوة، 1024 بعد |
+| Vector DB | ChromaDB | تخزين الـ chunks مع metadata غنية |
+| LLM | Groq (Llama 3.3 / 3.1) | تحليل المحتوى، فهم الأسئلة، الرد، إعادة الترتيب |
+| Audio | yt-dlp + faster-whisper | تحويل صوت الفيديوهات لنص (يوتيوب/تيك توك) |
+| Links | oEmbed + Open Graph | استخراج عنوان ووصف وصورة من اللينكات |
 
 ---
-
 ---
 
 ##  Setup & Installation
 
-### 1. Prerequisites
 
-- Python 3.11+
-- Tesseract OCR installed on your system
-
-**Install Tesseract:**
-
-```bash
-# Ubuntu
-sudo apt install tesseract-ocr
-
-```
-
-### 2. Clone the project
+### 1. Clone the project
 
 ```bash
 git clone https://github.com/Karim-Anwr/Second_Brain_With_Ai.git
@@ -50,7 +69,7 @@ cd second-brain
 ```
 
 
-### 3. Create virtual environment
+### 2. Create virtual environment
 
 ```bash
 python3 -m venv venv
@@ -60,19 +79,19 @@ source venv/bin/activate
 
 ```
 
-### 4. Install dependencies
+### 3. Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 5. Configure environment
+### 4. Configure environment
 
 ```bash
 cp .env.example .env
 ```
 
-### 6. Run the server
+### 5. Run the server
 
 ```bash
 uvicorn app.main:app --host 0.0.0.0 --port 8000

@@ -7,25 +7,19 @@ from app.models.memory import MemorySearchResult
 
 class SearchPipeline:
 
-    def search(
-        self,
-        query: str,
-        top_k: int = 5,
-        filters: dict = None,
-    ) -> dict:
+    def retrieve(
+    self,
+    query: str,
+    top_k: int = 5,
+    filters: dict = None,
+) -> dict:
+        """
+        منطق البحث الكامل (Steps 1-9) بدون توليد رد LLM.
+        بيستخدمه /search و /chat عشان الاتنين يبقوا بنفس القوة.
+        """
 
-        print(f"\n🔍 بحث عن: '{query}'")
-
-        # ─────────────────────────────
-        # Step 1: Normalize Query
-        # ─────────────────────────────
-        print("🔤 Step 1: تنظيف السؤال...")
         normalized_query = arabic_normalizer.normalize_query(query)
 
-        # ─────────────────────────────
-        # Step 2: Understand Query
-        # ─────────────────────────────
-        print("🧠 Step 2: فهم السؤال...")
         understanding = llm_service.understand_query(normalized_query)
 
         intent     = understanding.get("intent", query)
@@ -34,26 +28,16 @@ class SearchPipeline:
         expanded   = understanding.get("expanded_queries", [])
         category   = understanding.get("category", "any")
 
-        # ─────────────────────────────
-        # Filters
-        # ─────────────────────────────
         search_filters = dict(filters) if filters else {}
         if category != "any":
             search_filters["category"] = category
 
-        # ─────────────────────────────
-        # Step 3: Embeddings
-        # ─────────────────────────────
         all_queries = [normalized_query, intent] + expanded[:3]
         all_queries = list(dict.fromkeys(all_queries))
 
         embeddings = embedding_service.generate_batch(all_queries)
 
-        # ─────────────────────────────
-        # Step 4: Retrieval
-        # ─────────────────────────────
         all_chunks = []
-
         for emb in embeddings:
             chunks = storage_service.search_raw_chunks(
                 query_embedding=emb,
@@ -62,45 +46,46 @@ class SearchPipeline:
             )
             all_chunks.extend(chunks)
 
-        # ─────────────────────────────
-        # Step 5: Merge
-        # ─────────────────────────────
         merged = self._merge_chunks(all_chunks)
 
-        # ─────────────────────────────
-        # Step 6: Boosting
-        # ─────────────────────────────
         boosted = self._apply_boost(merged, keywords, entities)
-
         boosted.sort(key=lambda x: x.get("final_score", 0), reverse=True)
         top_chunks = boosted[:15]
 
-        # ─────────────────────────────
-        # Step 7: Rerank
-        # ─────────────────────────────
         reranked = llm_service.rerank(
             query=query,
             intent=intent,
             chunks=top_chunks,
         )
 
-        # ─────────────────────────────
-        # Step 8: Final Results
-        # ─────────────────────────────
         results = self._build_final_results(reranked, top_k)
 
-        # ─────────────────────────────
-        # Step 9: Access update
-        # ─────────────────────────────
         for r in results:
             try:
                 storage_service.increment_access_count(r.memory_id)
             except:
                 pass
 
-        # ─────────────────────────────
-        # Step 10: LLM Answer
-        # ─────────────────────────────
+        return {
+            "results": results,
+            "intent":  intent,
+        }
+
+    def search(
+    self,
+    query: str,
+    top_k: int = 5,
+    filters: dict = None,
+) -> dict:
+
+        print(f"\n🔍 بحث عن: '{query}'")
+
+        retrieval = self.retrieve(query=query, top_k=top_k, filters=filters)
+        results   = retrieval["results"]
+        intent    = retrieval["intent"]
+
+        print(f"   ✅ {len(results)} نتيجة نهائية")
+
         llm_answer = llm_service.answer_from_memories(
             query=query,
             memories=results,
@@ -108,9 +93,9 @@ class SearchPipeline:
         )
 
         return {
-            "query": query,
-            "total": len(results),
-            "results": results,
+            "query":      query,
+            "total":      len(results),
+            "results":    results,
             "llm_answer": llm_answer,
         }
 

@@ -1,0 +1,32 @@
+{
+  "id": "session_f4c2db9c",
+  "created_at": "2026-05-25T15:39:57.550291",
+  "updated_at": "2026-05-25T15:39:58.983609",
+  "title": "انت بضان صح ",
+  "messages": [
+    {
+      "id": "msg_16f0c404",
+      "session_id": "session_f4c2db9c",
+      "role": "user",
+      "content": "انت بضان صح ",
+      "created_at": "2026-05-25T15:39:57.593909",
+      "tokens_used": 0,
+      "memory_ids": []
+    },
+    {
+      "id": "msg_278bfa35",
+      "session_id": "session_f4c2db9c",
+      "role": "assistant",
+      "content": "😊 أه طبعاً! أنا بضان صح و جاهز لمساعدتك في أي حاجة تحتاجها. من غير ما نبدأ من جديد، هل في حاجة محددة بتحب تتكلم عنها أو تذكرها؟ 🤔",
+      "created_at": "2026-05-25T15:39:58.983531",
+      "tokens_used": 0,
+      "memory_ids": [
+        "mem_fa49957b5823",
+        "mem_98d43bda995c",
+        "mem_3740240dda17"
+      ]
+    }
+  ],
+  "total_messages": 2,
+  "summary": "المستخدم بدأ محادثة معي واعتبرني نظام استخراج ذكريات ذكي. أنا جاهز لمساعدته في أي حاجة تحتاجها."
+}

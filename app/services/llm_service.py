@@ -9,6 +9,7 @@ class LLMService:
         self.client      = Groq(api_key=settings.groq_api_key)
         self.smart_model = "llama-3.3-70b-versatile"
         self.fast_model  = "llama-3.1-8b-instant"
+        
         print("✅ Groq LLM جاهز!")
 
     def _call(self, prompt: str, fast: bool = False) -> str:
@@ -33,7 +34,32 @@ class LLMService:
         elif "```" in raw:
             raw = raw.split("```")[1].split("```")[0]
         return json.loads(raw.strip())
+    # ============================================================
+    # 1. detect_save_intent
+    # ============================================================
+    def detect_save_intent(self, message: str) -> dict:
+        """
+        بيكشف هل المستخدم بيطلب حفظ حاجة صراحة.
+        مثال: "احفظلي ده"، "سجل عندك إني..."، "فكرني بكذا"
+        """
+        prompt = f"""حلل الرسالة دي وارجع JSON فقط:
 
+    الرسالة: {message}
+
+    {{
+        "wants_to_save": true,
+        "content_to_save": "المحتوى المطلوب حفظه لو موجود",
+        "confidence": 0.9
+    }}
+
+    wants_to_save = true بس لو فيه طلب صريح للحفظ أو التذكر.
+    لو مجرد سؤال عادي أو محادثة، خليها false."""
+
+        try:
+            raw = self._call(prompt, fast=True)
+            return self._parse_json(raw)
+        except Exception:
+            return {"wants_to_save": False, "content_to_save": "", "confidence": 0.0}
     # ============================================================
     # 1. Query Understanding
     # ============================================================

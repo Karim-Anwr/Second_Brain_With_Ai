@@ -1,0 +1,24 @@
+[
+  {
+    "id": "exmem_257e3222",
+    "session_id": "session_76ca5536",
+    "memory_type": "conversation",
+    "content": "الذكرى بشكل واضح ومفيد",
+    "summary": "ملخص قصير",
+    "keywords": [
+      "جورج وسوف",
+      "أبو وديع"
+    ],
+    "entities": [
+      "جورج وسوف",
+      "أبو وديع"
+    ],
+    "topics": [
+      "أغاني",
+      "جورج وسوف"
+    ],
+    "importance": 0.85,
+    "created_at": "2026-06-20T11:12:21.912033",
+    "source_message_id": ""
+  }
+]
