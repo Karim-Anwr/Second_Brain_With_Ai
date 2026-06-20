@@ -142,7 +142,7 @@ curl -X POST http://localhost:8000/api/v1/upload \
 ```bash
 curl -X POST http://localhost:8000/api/v1/search \
   -H "Content-Type: application/json" \
-  -d '{"query": ""كان فى صوره للاب لينوفو عاوز اعرف السعر كام", "top_k": 5}'
+  -d '{"query": "كان فى صوره للاب لينوفو عاوز اعرف السعر كام", "top_k": 5}'
 ```
 
 **Response:**
