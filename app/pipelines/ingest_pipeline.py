@@ -12,7 +12,7 @@ from app.utils.searchable_text import searchable_text_builder
 import uuid
 from app.services.link_service import link_service
 from app.services.audio_service import audio_service
-from app.core.exceptions import InvalidRequestException, SecondBrainException
+from app.core.exceptions import InvalidRequestException, SecondBrainException, UnsafeURLError
 from app.services.graph_service import graph_service
 
 
@@ -91,8 +91,12 @@ class IngestPipeline:
         if thumb_url:
             thumb_id = uuid.uuid4().hex[:8]
             candidate_path = str(settings.upload_dir / f"link_{thumb_id}.jpg")
-            if link_service.download_thumbnail(thumb_url, candidate_path):
-                thumbnail_path = candidate_path
+            try:
+                if link_service.download_thumbnail(thumb_url, candidate_path):
+                    thumbnail_path = candidate_path
+            except UnsafeURLError:
+                # A safe page remains ingestible when its optional image target is unsafe.
+                print("   ⚠️ تم تخطي الصورة المصغرة غير الآمنة")
 
         file_name = title or f"{platform} link"
 

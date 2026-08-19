@@ -2,7 +2,7 @@ from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
 from app.core.config import settings
-from app.core.exceptions import ResourceNotFoundException
+from app.core.exceptions import InvalidRequestException, ResourceNotFoundException
 from app.models.api import (
     FavoriteResponse,
     LinkMemoriesResponse,
@@ -96,8 +96,10 @@ async def get_related_memories(
 
 @router.post("/memories/link", response_model=LinkMemoriesResponse)
 async def link_memories(request: LinkMemoriesRequest):
+    if request.from_id == request.to_id:
+        raise InvalidRequestException("A memory cannot be linked to itself.")
     _require_memory(request.from_id)
     _require_memory(request.to_id)
     if not graph_service.add_edge(request.from_id, request.to_id, relation_type="manual", score=1.0):
-        raise ResourceNotFoundException("Distinct memory")
+        raise InvalidRequestException("The requested memory link is invalid.")
     return {"status": "linked"}

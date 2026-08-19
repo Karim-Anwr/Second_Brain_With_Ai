@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 from app.core.config import settings
+from app.core.exceptions import StorageCorruptionException, StorageException
 
 
 class GraphService:
@@ -25,9 +26,20 @@ class GraphService:
             try:
                 with open(self.edges_path, "r", encoding="utf-8") as source:
                     data = json.load(source)
-                return data if isinstance(data, list) else []
-            except (OSError, json.JSONDecodeError):
-                return []
+            except json.JSONDecodeError as exc:
+                raise StorageCorruptionException("Graph data") from exc
+            except OSError as exc:
+                raise StorageException("Unable to read graph data.") from exc
+
+            if not isinstance(data, list) or any(
+                not isinstance(edge, dict)
+                or not isinstance(edge.get("from"), str)
+                or not isinstance(edge.get("to"), str)
+                or not isinstance(edge.get("score"), (int, float))
+                for edge in data
+            ):
+                raise StorageCorruptionException("Graph data")
+            return data
 
     def _save_edges(self, edges: list[dict]) -> None:
         temporary_name: str | None = None
@@ -41,6 +53,8 @@ class GraphService:
                     temp_file.flush()
                     os.fsync(temp_file.fileno())
                 os.replace(temporary_name, self.edges_path)
+            except OSError as exc:
+                raise StorageException("Unable to persist graph data.") from exc
             finally:
                 if temporary_name and Path(temporary_name).exists():
                     Path(temporary_name).unlink(missing_ok=True)

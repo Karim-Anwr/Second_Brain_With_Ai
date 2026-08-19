@@ -10,10 +10,18 @@ from app.api.routes import chat as chat_routes
 from app.api.routes import search as search_routes
 from app.api.routes import upload as upload_routes
 from app.core.config import settings
-from app.core.exceptions import InvalidRequestException, UnsafeURLError, UnsupportedFileTypeException, UploadTooLargeException
+from app.core.exceptions import (
+    InvalidRequestException,
+    StorageCorruptionException,
+    UnsafeURLError,
+    UnsupportedFileTypeException,
+    UploadTooLargeException,
+)
 from app.main import app
+from app.models.conversation import ExtractedMemory, MemoryType
 from app.models.memory import Category, FileType, MemoryResponse
 from app.pipelines.ingest_pipeline import IngestPipeline
+from app.services.graph_service import GraphService
 from app.services.link_service import LinkService
 from app.utils.file_handler import save_upload_file
 
@@ -153,8 +161,42 @@ def test_graph_routes_validate_depth_and_memory_ids(client, monkeypatch):
     monkeypatch.setattr(search_routes, "graph_service", Graph())
     invalid_depth = client.get("/api/v1/memories/mem_1/related?depth=99")
     missing_memory = client.post("/api/v1/memories/link", json={"from_id": "mem_1", "to_id": "mem_missing"})
+    self_link = client.post("/api/v1/memories/link", json={"from_id": "mem_1", "to_id": "mem_1"})
     assert invalid_depth.status_code == 422
     assert missing_memory.status_code == 404
+    assert self_link.status_code == 400
+    assert self_link.json()["error"]["code"] == "invalid_request"
+
+
+def test_graph_corruption_is_preserved_and_never_overwritten(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "graph_dir", tmp_path)
+    graph = GraphService()
+    corrupt_content = "{not-json"
+    graph.edges_path.write_text(corrupt_content, encoding="utf-8")
+
+    with pytest.raises(StorageCorruptionException):
+        graph.add_edge("mem_1", "mem_2")
+    with pytest.raises(StorageCorruptionException):
+        graph.remove_edge("mem_1", "mem_2")
+
+    assert graph.edges_path.read_text(encoding="utf-8") == corrupt_content
+
+
+def test_corrupt_session_sidecar_is_preserved_and_returns_storage_error(client, isolated_sessions, monkeypatch):
+    session = isolated_sessions.create_session()
+    sidecar = isolated_sessions.sessions_dir / f"{session.id}_memories.json"
+    corrupt_content = "{not-json"
+    sidecar.write_text(corrupt_content, encoding="utf-8")
+    memory = ExtractedMemory(session_id=session.id, memory_type=MemoryType.FACT, content="fact")
+
+    with pytest.raises(StorageCorruptionException):
+        isolated_sessions.save_extracted_memory(session.id, memory)
+    assert sidecar.read_text(encoding="utf-8") == corrupt_content
+
+    monkeypatch.setattr(chat_routes, "session_service", isolated_sessions)
+    result = client.get(f"/api/v1/sessions/{session.id}/memories")
+    assert result.status_code == 409
+    assert result.json()["error"]["code"] == "storage_corrupt"
 
 
 def upload_file(content: bytes, content_type: str, name: str = "upload.png") -> UploadFile:
@@ -206,9 +248,109 @@ def test_redirect_to_private_destination_is_rejected(monkeypatch):
             return None
 
     monkeypatch.setattr("app.services.link_service.socket.getaddrinfo", resolver)
-    monkeypatch.setattr("app.services.link_service.requests.get", lambda *_, **__: Redirect())
+    monkeypatch.setattr(service, "_perform_pinned_get", lambda _: Redirect())
     with pytest.raises(UnsafeURLError):
         service._safe_get("https://public.example/")
+
+
+def test_safe_get_binds_each_redirect_to_its_validated_destination(monkeypatch):
+    service = LinkService()
+    first = service._ValidatedDestination(
+        url="https://public.example/",
+        scheme="https",
+        hostname="public.example",
+        port=443,
+        ip_address="8.8.8.8",
+        request_target="/",
+        host_header="public.example",
+    )
+    second = service._ValidatedDestination(
+        url="https://redirected.example/final",
+        scheme="https",
+        hostname="redirected.example",
+        port=443,
+        ip_address="1.1.1.1",
+        request_target="/final",
+        host_header="redirected.example",
+    )
+    resolved = []
+    connected = []
+
+    class Redirect:
+        status_code = 302
+        headers = {"Location": "https://redirected.example/final"}
+
+        def close(self):
+            return None
+
+    class Final:
+        status_code = 200
+        headers = {}
+
+    def resolve(url):
+        resolved.append(url)
+        return first if "public.example" in url else second
+
+    def connect(destination):
+        connected.append(destination)
+        return Redirect() if len(connected) == 1 else Final()
+
+    monkeypatch.setattr(service, "_resolve_public_destination", resolve)
+    monkeypatch.setattr(service, "_perform_pinned_get", connect)
+    result = service._safe_get("https://public.example/")
+
+    assert result.status_code == 200
+    assert [destination.ip_address for destination in connected] == ["8.8.8.8", "1.1.1.1"]
+    assert resolved == ["https://public.example/", "https://redirected.example/final"]
+
+
+def test_unsafe_thumbnail_is_skipped_without_failing_safe_page_metadata(monkeypatch):
+    service = LinkService()
+
+    class Page:
+        status_code = 200
+        headers = {}
+        encoding = "utf-8"
+
+        def raise_for_status(self):
+            return None
+
+        def iter_content(self, chunk_size):
+            yield b'<html><head><meta property="og:title" content="Safe title"><meta property="og:image" content="http://private.test/image.jpg"></head></html>'
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr(service, "_safe_get", lambda _: Page())
+    monkeypatch.setattr(
+        service,
+        "validate_url",
+        lambda url: (_ for _ in ()).throw(UnsafeURLError()) if "private.test" in url else url,
+    )
+    metadata = service._open_graph("https://public.example/page", "generic")
+
+    assert metadata["success"] is True
+    assert metadata["title"] == "Safe title"
+    assert metadata["thumbnail_url"] == ""
+
+
+def test_link_ingestion_continues_when_thumbnail_download_is_unsafe(monkeypatch):
+    pipeline = IngestPipeline()
+    captured = {}
+    monkeypatch.setattr(
+        "app.pipelines.ingest_pipeline.link_service.extract_metadata",
+        lambda _: {"platform": "generic", "title": "Safe title", "description": "desc", "author": "", "thumbnail_url": "http://private.test/image.jpg"},
+    )
+    monkeypatch.setattr(
+        "app.pipelines.ingest_pipeline.link_service.download_thumbnail",
+        lambda *_: (_ for _ in ()).throw(UnsafeURLError()),
+    )
+    monkeypatch.setattr(pipeline, "_process_content", lambda **kwargs: captured.update(kwargs) or response(FileType.LINK))
+
+    result = pipeline.process_link("https://public.example/page")
+    assert result.file_type is FileType.LINK
+    assert captured["file_path"] == ""
+    assert captured["is_image"] is False
 
 
 def test_unexpected_error_uses_safe_response(client, monkeypatch):

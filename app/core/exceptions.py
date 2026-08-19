@@ -30,6 +30,11 @@ class UnsafeURLError(AppError):
         super().__init__("unsafe_url", message, 400)
 
 
+class StorageCorruptionException(AppError):
+    def __init__(self, resource: str = "Stored data"):
+        super().__init__("storage_corrupt", f"{resource} is corrupt and was not modified.", 409)
+
+
 class OCRFailedException(SecondBrainException):
     pass
 

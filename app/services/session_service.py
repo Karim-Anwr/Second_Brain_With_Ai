@@ -9,7 +9,12 @@ from pathlib import Path
 from typing import Any
 
 from app.core.config import settings
-from app.core.exceptions import InvalidRequestException, ResourceNotFoundException
+from app.core.exceptions import (
+    InvalidRequestException,
+    ResourceNotFoundException,
+    StorageCorruptionException,
+    StorageException,
+)
 from app.models.conversation import ChatMessage, ChatSession, ExtractedMemory, MessageRole
 
 
@@ -50,13 +55,18 @@ class SessionService:
                 temp_file.flush()
                 os.fsync(temp_file.fileno())
             os.replace(temporary_name, path)
+        except OSError as exc:
+            raise StorageException("Unable to persist session data.") from exc
         finally:
             if temporary_name and Path(temporary_name).exists():
                 Path(temporary_name).unlink(missing_ok=True)
 
     def _load_json(self, path: Path) -> Any:
-        with open(path, "r", encoding="utf-8") as source:
-            return json.load(source)
+        try:
+            with open(path, "r", encoding="utf-8") as source:
+                return json.load(source)
+        except OSError as exc:
+            raise StorageException("Unable to read session data.") from exc
 
     def create_session(self) -> ChatSession:
         session = ChatSession()
@@ -152,8 +162,10 @@ class SessionService:
                         memories = data
                     else:
                         raise ValueError("invalid extracted memory shape")
-                except (OSError, json.JSONDecodeError, ValueError, TypeError) as exc:
-                    logger.warning("Replacing unreadable extracted-memory sidecar for %s", session_id, exc_info=exc)
+                    [ExtractedMemory(**existing) for existing in memories]
+                except (json.JSONDecodeError, ValueError, TypeError) as exc:
+                    logger.warning("Preserving corrupt extracted-memory sidecar for %s", session_id, exc_info=exc)
+                    raise StorageCorruptionException("Extracted-memory data") from exc
             memories.append(memory.model_dump(mode="json"))
             self._atomic_write_json(path, memories)
 
@@ -166,9 +178,9 @@ class SessionService:
             if not isinstance(data, list):
                 raise ValueError("invalid extracted memory shape")
             return [ExtractedMemory(**memory) for memory in data]
-        except (OSError, json.JSONDecodeError, ValueError, TypeError) as exc:
-            logger.warning("Unable to read extracted memories for %s", session_id, exc_info=exc)
-            return []
+        except (json.JSONDecodeError, ValueError, TypeError) as exc:
+            logger.warning("Preserving corrupt extracted-memory sidecar for %s", session_id, exc_info=exc)
+            raise StorageCorruptionException("Extracted-memory data") from exc
 
 
 _session_service: SessionService | None = None
