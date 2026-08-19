@@ -187,11 +187,11 @@ class LinkService:
         return bytes(content)
 
     def _oembed(self, url: str, endpoint: str, platform: str) -> dict:
+        response = None
         try:
             response = self._safe_get(endpoint, params={"url": url, "format": "json"})
             response.raise_for_status()
             payload = self._read_limited(response)
-            response.close()
             data = response.json() if not payload else json.loads(payload.decode("utf-8"))
             thumbnail_url = data.get("thumbnail_url", "")
             if thumbnail_url:
@@ -212,13 +212,16 @@ class LinkService:
             raise
         except Exception:
             return self._empty(url, platform)
+        finally:
+            if response is not None:
+                response.close()
 
     def _open_graph(self, url: str, platform: str) -> dict:
+        response = None
         try:
             response = self._safe_get(url)
             response.raise_for_status()
             html = self._read_limited(response).decode(response.encoding or "utf-8", errors="replace")
-            response.close()
             soup = BeautifulSoup(html, "html.parser")
 
             def meta(prop: str) -> str:
@@ -246,6 +249,9 @@ class LinkService:
             raise
         except Exception:
             return self._empty(url, platform)
+        finally:
+            if response is not None:
+                response.close()
 
     def _empty(self, url: str, platform: str) -> dict:
         return {
@@ -261,6 +267,7 @@ class LinkService:
     def download_thumbnail(self, thumbnail_url: str, save_path: str) -> bool:
         if not thumbnail_url:
             return False
+        response = None
         try:
             response = self._safe_get(thumbnail_url)
             response.raise_for_status()
@@ -268,7 +275,6 @@ class LinkService:
             if not content_type.startswith("image/"):
                 return False
             content = self._read_limited(response)
-            response.close()
             path = Path(save_path)
             path.parent.mkdir(parents=True, exist_ok=True)
             temporary_path = path.with_suffix(f"{path.suffix}.part")
@@ -279,6 +285,9 @@ class LinkService:
             raise
         except Exception:
             return False
+        finally:
+            if response is not None:
+                response.close()
 
 
 link_service = LinkService()

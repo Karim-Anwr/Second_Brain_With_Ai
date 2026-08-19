@@ -92,9 +92,16 @@ class SessionService:
 
     def list_sessions(self) -> list[dict]:
         sessions: list[dict] = []
-        for path in sorted(self.sessions_dir.glob("session_*.json"), key=lambda item: item.stat().st_mtime, reverse=True):
+        paths: list[tuple[float, Path]] = []
+        for path in self.sessions_dir.glob("session_*.json"):
             if path.name.endswith("_memories.json"):
                 continue
+            try:
+                paths.append((path.stat().st_mtime, path))
+            except OSError as exc:
+                logger.warning("Skipping unreadable session file %s", path.name, exc_info=exc)
+
+        for _, path in sorted(paths, key=lambda item: item[0], reverse=True):
             try:
                 data = self._load_json(path)
                 if not isinstance(data, dict) or not SESSION_ID_PATTERN.fullmatch(str(data.get("id", ""))):
@@ -108,7 +115,7 @@ class SessionService:
                         "updated_at": data.get("updated_at", ""),
                     }
                 )
-            except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
+            except (StorageException, OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
                 logger.warning("Skipping unreadable session file %s", path.name, exc_info=exc)
             if len(sessions) >= 20:
                 break

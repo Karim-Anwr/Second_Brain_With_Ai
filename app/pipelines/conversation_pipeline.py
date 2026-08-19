@@ -6,6 +6,7 @@ from app.models.conversation import (
 from app.services.session_service import session_service
 from app.services.conversation_service import conversation_service
 from app.services.llm_service import llm_service
+from app.core.exceptions import StorageCorruptionException, StorageException
 from app.pipelines.context_builder import context_builder
 from app.utils.arabic_normalizer import arabic_normalizer
 
@@ -120,11 +121,16 @@ class ConversationPipeline:
         # Step 6: استخرج ذكريات
         # ════════════════════════════════
         print(" استخراج ذكريات...")
-        extracted = conversation_service.process_and_extract(
-            session_id=session_id,
-            user_message=request.message,
-            assistant_response=answer,
-        )
+        try:
+            extracted = conversation_service.process_and_extract(
+                session_id=session_id,
+                user_message=request.message,
+                assistant_response=answer,
+            )
+        except (StorageCorruptionException, StorageException):
+            # The assistant turn is already durable; keep a corrupt sidecar untouched and return the turn normally.
+            print("    تعذر حفظ الذكريات المستخرجة، نكمل الرد بدون تعديل البيانات الحالية")
+            extracted = []
         print(f"    {len(extracted)} ذكرى مستخرجة")
 
         # ════════════════════════════════

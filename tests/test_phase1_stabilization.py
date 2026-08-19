@@ -13,6 +13,7 @@ from app.core.config import settings
 from app.core.exceptions import (
     InvalidRequestException,
     StorageCorruptionException,
+    StorageException,
     UnsafeURLError,
     UnsupportedFileTypeException,
     UploadTooLargeException,
@@ -108,6 +109,38 @@ def test_chat_save_failure_does_not_abort_chat(monkeypatch):
     assert result.new_memories == 0
 
 
+def test_chat_returns_persisted_assistant_turn_when_sidecar_is_corrupt(monkeypatch):
+    from app.models.conversation import ChatRequest
+    from app.pipelines.conversation_pipeline import ConversationPipeline
+
+    class Session:
+        id = "session_aabbccdd"
+        total_messages = 1
+
+    persisted = []
+
+    def add_message(**kwargs):
+        persisted.append(kwargs)
+        return type("Message", (), {"id": f"msg_{len(persisted)}"})()
+
+    monkeypatch.setattr("app.pipelines.conversation_pipeline.session_service.create_session", lambda: Session())
+    monkeypatch.setattr("app.pipelines.conversation_pipeline.session_service.add_message", add_message)
+    monkeypatch.setattr("app.pipelines.conversation_pipeline.llm_service.detect_save_intent", lambda _: {"wants_to_save": False})
+    monkeypatch.setattr("app.pipelines.conversation_pipeline.context_builder.build", lambda **_: {"context": "ctx", "memory_ids_used": []})
+    monkeypatch.setattr("app.pipelines.conversation_pipeline.context_builder.build_system_prompt", lambda: "system")
+    monkeypatch.setattr("app.pipelines.conversation_pipeline.llm_service._call", lambda *_, **__: "answer")
+    monkeypatch.setattr(
+        "app.pipelines.conversation_pipeline.conversation_service.process_and_extract",
+        lambda **_: (_ for _ in ()).throw(StorageCorruptionException("Extracted-memory data")),
+    )
+
+    result = ConversationPipeline().chat(ChatRequest(message="remember this"))
+
+    assert result.answer == "answer"
+    assert result.new_memories == 0
+    assert any(item["role"].value == "assistant" for item in persisted)
+
+
 def test_favorite_route_uses_singleton_binding(client, monkeypatch):
     class Storage:
         def set_favorite(self, memory_id, is_favorite):
@@ -199,6 +232,22 @@ def test_corrupt_session_sidecar_is_preserved_and_returns_storage_error(client, 
     assert result.json()["error"]["code"] == "storage_corrupt"
 
 
+def test_session_list_skips_one_unreadable_regular_session_file(isolated_sessions, monkeypatch):
+    readable = isolated_sessions.create_session()
+    unreadable = isolated_sessions.create_session()
+    original_load = isolated_sessions._load_json
+
+    def load_json(path):
+        if path.name == f"{unreadable.id}.json":
+            raise StorageException("Unable to read session data.")
+        return original_load(path)
+
+    monkeypatch.setattr(isolated_sessions, "_load_json", load_json)
+    listed_ids = [session["id"] for session in isolated_sessions.list_sessions()]
+
+    assert listed_ids == [readable.id]
+
+
 def upload_file(content: bytes, content_type: str, name: str = "upload.png") -> UploadFile:
     return UploadFile(file=io.BytesIO(content), filename=name, headers=Headers({"content-type": content_type}))
 
@@ -251,6 +300,60 @@ def test_redirect_to_private_destination_is_rejected(monkeypatch):
     monkeypatch.setattr(service, "_perform_pinned_get", lambda _: Redirect())
     with pytest.raises(UnsafeURLError):
         service._safe_get("https://public.example/")
+
+
+class TrackableResponse:
+    def __init__(self, *, content=b"", content_type="application/json", content_length=None, encoding="utf-8"):
+        self.status_code = 200
+        self.headers = {"Content-Type": content_type}
+        if content_length is not None:
+            self.headers["Content-Length"] = content_length
+        self.encoding = encoding
+        self.content = content
+        self.closed = False
+
+    def raise_for_status(self):
+        return None
+
+    def iter_content(self, chunk_size):
+        yield self.content
+
+    def close(self):
+        self.closed = True
+
+
+@pytest.mark.parametrize(
+    ("method", "response", "max_bytes"),
+    [
+        ("_oembed", TrackableResponse(content=b'{"title":"title"}'), 1024),
+        ("_oembed", TrackableResponse(content=b"not-json"), 1024),
+        ("_open_graph", TrackableResponse(content=b"<html><title>title</title></html>", content_length="invalid"), 1024),
+        ("_open_graph", TrackableResponse(content=b"x" * 8, content_length="8"), 4),
+        ("download_thumbnail", TrackableResponse(content=b"data", content_type="text/plain"), 4),
+        ("download_thumbnail", TrackableResponse(content=b"x" * 8, content_type="image/png", content_length="8"), 4),
+    ],
+)
+def test_pinned_responses_close_on_success_and_early_failures(tmp_path, monkeypatch, method, response, max_bytes):
+    service = LinkService()
+    monkeypatch.setattr(service, "_safe_get", lambda *_, **__: response)
+    monkeypatch.setattr(settings, "max_remote_response_bytes", max_bytes)
+
+    if method == "_oembed":
+        service._oembed("https://public.example/page", "https://oembed.example", "generic")
+    elif method == "_open_graph":
+        if response.headers.get("Content-Length") == "8":
+            with pytest.raises(UnsafeURLError):
+                service._open_graph("https://public.example/page", "generic")
+        else:
+            service._open_graph("https://public.example/page", "generic")
+    else:
+        if response.headers.get("Content-Length") == "8":
+            with pytest.raises(UnsafeURLError):
+                service.download_thumbnail("https://public.example/image.png", str(tmp_path / "image.png"))
+        else:
+            service.download_thumbnail("https://public.example/image.png", str(tmp_path / "image.png"))
+
+    assert response.closed is True
 
 
 def test_safe_get_binds_each_redirect_to_its_validated_destination(monkeypatch):
