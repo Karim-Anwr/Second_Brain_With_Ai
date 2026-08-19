@@ -1,13 +1,14 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
+import logging
+
+from fastapi import APIRouter, File, UploadFile
 from pydantic import BaseModel, Field
 from app.pipelines.ingest_pipeline import ingest_pipeline
-from app.utils.file_handler import save_upload_file, get_file_type
+from app.utils.file_handler import get_file_type, remove_upload_file, save_upload_file
 from app.models.memory import MemoryResponse
-from app.core.exceptions import (
-    OCRFailedException,
-    UnsupportedFileTypeException,
-    StorageException
-)
+from app.services.link_service import link_service
+
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -15,10 +16,10 @@ router = APIRouter()
 # ── Text Input Model ──
 class TextUploadRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
-    text:  str = Field(..., min_length=1)
+    text:  str = Field(..., min_length=1, max_length=100_000)
 
 class LinkUploadRequest(BaseModel):
-    url: str = Field(..., min_length=5)
+    url: str = Field(..., min_length=5, max_length=2_048)
 
 
 @router.post("/upload/link", response_model=MemoryResponse)
@@ -26,13 +27,8 @@ async def upload_link(request: LinkUploadRequest):
     """
     يستقبل لينك (يوتيوب، تيك توك، أو أي موقع) ويحفظه كـ memory.
     """
-    try:
-        result = ingest_pipeline.process_link(url=request.url)
-        return result
-    except StorageException as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    link_service.validate_url(request.url)
+    return ingest_pipeline.process_link(url=request.url)
 
 
 @router.post("/upload", response_model=MemoryResponse)
@@ -42,31 +38,20 @@ async def upload_file(file: UploadFile = File(...)):
     Supported: PNG, JPG, JPEG, PDF
     """
 
-    try:
-        file_type = get_file_type(file.content_type)
-    except UnsupportedFileTypeException as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    get_file_type(file.content_type)
+    _, file_path, file_type = await save_upload_file(file)
 
     try:
-        document_id, file_path, file_type = await save_upload_file(file)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"فشل حفظ الملف: {str(e)}")
-
-    try:
-        result = ingest_pipeline.process(
+        return ingest_pipeline.process(
             file_path=file_path,
-            file_name=file.filename,
+            file_name=file.filename or "upload",
             file_type=file_type,
             file_size=file.size or 0,
         )
-        return result
-
-    except OCRFailedException as e:
-        raise HTTPException(status_code=422, detail=str(e))
-    except StorageException as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        remove_upload_file(file_path)
+        logger.exception("Upload ingestion failed")
+        raise
 
 
 @router.post("/upload/text", response_model=MemoryResponse)
@@ -75,14 +60,4 @@ async def upload_text(request: TextUploadRequest):
     يستقبل نص مباشر من المستخدم ويحفظه كـ memory.
     بيتخطى الـ OCR خالص — النص جاهز.
     """
-    try:
-        result = ingest_pipeline.process_text(
-            text=request.text,
-            title=request.title,
-        )
-        return result
-
-    except StorageException as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return ingest_pipeline.process_text(text=request.text, title=request.title)

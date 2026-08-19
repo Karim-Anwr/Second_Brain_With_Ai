@@ -65,7 +65,7 @@
 
 ```bash
 git clone https://github.com/Karim-Anwr/Second_Brain_With_Ai.git
-cd second-brain
+cd Second_Brain_With_Ai
 ```
 
 
@@ -82,7 +82,7 @@ source venv/bin/activate
 ### 3. Install dependencies
 
 ```bash
-pip install -r requirements.txt
+pip install -r app/requirements.txt
 ```
 
 ### 4. Configure environment
@@ -117,38 +117,9 @@ curl -X POST http://localhost:8000/api/v1/upload \
   "file_name": "Screenshot_2023-08-29-14-06-27-77_b5f6883d2c20a96c53babc0b4ac88108.jpg",
   "file_type": "image",
   "summary": "الملف يحتوي على تفاصيل جهاز كمبيوتر محمول من لينوفو، يضم معالج إنتل كور i7، 16 جيجابايت من الذاكرة العشوائية، ورسومات إنفيديا جيفورس RTX 3050. الجهاز يحتوي على شاشة 15.6 إنش بدقة 1920x1080، ويدعم تردد 120 هرتز. السعر المذكور هو 32,444 مع إمكانية إرجاع المنتج.",
-  "tags": [
-    "لينوفو",
-    "كمبيوتر محمول",
-    "ألعاب",
-    "إنترنت",
-    "تكنولوجيا"
-  ],
-  "keywords": [
-    "لينوفو",
-    "إنترنت",
-    "كمبيوتر",
-    "ألعاب",
-    "تكنولوجيا",
-    "معالج",
-    "ذاكرة",
-    "رسومات"
-  ],
-  "entities": [
-    "لينوفو",
-    "إنترنت",
-    "إنفيديا"
-  ],
-  "topics": [
-    "تكنولوجيا",
-    "ألعاب"
-  ],
+  "tags": ["لينوفو", "كمبيوتر محمول", "تكنولوجيا"],
   "category": "technology",
-  "language": "ar",
   "importance": 0.8,
-  "main_topic": "",
-  "content_type": "مقال",
-  "semantic_labels": [],
   "total_chunks": 1,
   "status": "success"
 }

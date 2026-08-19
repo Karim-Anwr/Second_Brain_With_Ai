@@ -5,25 +5,23 @@ from app.utils.arabic_normalizer import arabic_normalizer
 
 
 class EmbeddingService:
-    """
-    بيستخدم BGE-M3 — أقوى موديل multilingual مجاني.
-    
-    ليه BGE-M3؟
-    - بيفهم العربي والإنجليزي مع بعض
-    - أقوى من all-MiniLM في العربي بكتير
-    - مجاني ويشتغل محلياً
-    """
+    """BGE-M3 embeddings, loaded only when a request actually needs them."""
 
     def __init__(self):
-        model_name = getattr(
-            settings,
-            'embedding_model',
-            'BAAI/bge-m3'
-        )
-        print(f"جاري تحميل الموديل: {model_name}")
-        self.model     = SentenceTransformer(model_name)
-        self.dimension = self.model.get_sentence_embedding_dimension()
-        print(f"✅ الموديل جاهز! حجم الـ vector: {self.dimension}")
+        self.model_name = settings.embedding_model
+        self.model: SentenceTransformer | None = None
+        self.dimension: int | None = None
+
+    def _get_model(self) -> SentenceTransformer:
+        if self.model is None:
+            try:
+                print(f"جاري تحميل الموديل: {self.model_name}")
+                self.model = SentenceTransformer(self.model_name)
+                self.dimension = self.model.get_sentence_embedding_dimension()
+                print(f"✅ الموديل جاهز! حجم الـ vector: {self.dimension}")
+            except Exception as exc:
+                raise EmbeddingFailedException("Embedding model is unavailable.") from exc
+        return self.model
 
     def generate(self, text: str) -> list[float]:
         """
@@ -39,14 +37,16 @@ class EmbeddingService:
             normalized = text
 
         try:
-            vector = self.model.encode(
+            vector = self._get_model().encode(
                 normalized,
                 normalize_embeddings=True,
                 convert_to_numpy=True,
             )
             return vector.tolist()
-        except Exception as e:
-            raise EmbeddingFailedException(f"فشل الـ embedding: {e}")
+        except EmbeddingFailedException:
+            raise
+        except Exception as exc:
+            raise EmbeddingFailedException("Embedding generation failed.") from exc
 
     def generate_batch(
         self,
@@ -67,21 +67,23 @@ class EmbeddingService:
             normalized.append(n if n.strip() else t)
 
         try:
-            vectors = self.model.encode(
+            vectors = self._get_model().encode(
                 normalized,
                 normalize_embeddings=True,
                 show_progress_bar=show_progress,
                 batch_size=16 if len(texts) < 100 else 64,
             )
             return vectors.tolist()
-        except Exception as e:
-            raise EmbeddingFailedException(f"فشل الـ batch embedding: {e}")
+        except EmbeddingFailedException:
+            raise
+        except Exception as exc:
+            raise EmbeddingFailedException("Batch embedding generation failed.") from exc
 
 
 # Singleton
-_embedding_service = None
+_embedding_service: EmbeddingService | None = None
 
-def get_embedding_service():
+def get_embedding_service() -> EmbeddingService:
     global _embedding_service
     if _embedding_service is None:
         _embedding_service = EmbeddingService()

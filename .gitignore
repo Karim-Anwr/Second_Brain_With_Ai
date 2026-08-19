@@ -214,3 +214,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local runtime state. Existing tracked data is intentionally retained for manual cleanup.
+storage/
+YOUR_PATH/

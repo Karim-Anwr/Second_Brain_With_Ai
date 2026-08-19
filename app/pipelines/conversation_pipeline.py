@@ -62,11 +62,15 @@ class ConversationPipeline:
 
         if save_intent.get("wants_to_save") and save_intent.get("confidence", 0) > 0.6:
             content = save_intent.get("content_to_save") or request.message
-            saved_memory_id = self.save_as_memory(
-                session_id=session_id,
-                content=content,
-            )
-            print(f"    المستخدم طلب حفظ — اتحفظ في ChromaDB")
+            try:
+                saved_memory_id = conversation_service.save_as_memory(
+                    session_id=session_id,
+                    content=content,
+                )
+                print(f"    المستخدم طلب حفظ — اتحفظ في ChromaDB")
+            except Exception:
+                # Saving is optional: it must not turn a normal chat turn into a raw 500.
+                print("    تعذر حفظ الذاكرة المطلوبة، نكمل المحادثة بشكل طبيعي")
         # ════════════════════════════════
         # Step 3: ابني الـ Context
         # ════════════════════════════════

@@ -1,4 +1,5 @@
 import hashlib
+from app.core.config import settings
 from app.services.ocr_service import ocr_service
 from app.services.embedding_service import embedding_service
 from app.services.storage_service import storage_service
@@ -11,7 +12,7 @@ from app.utils.searchable_text import searchable_text_builder
 import uuid
 from app.services.link_service import link_service
 from app.services.audio_service import audio_service
-from app.core.exceptions import SecondBrainException
+from app.core.exceptions import InvalidRequestException, SecondBrainException
 from app.services.graph_service import graph_service
 
 
@@ -36,6 +37,18 @@ class IngestPipeline:
             file_size=file_size,
             is_image=file_type == "image",
         )
+
+    def process_text(self, text: str, title: str) -> MemoryResponse:
+        """Ingest direct user text through the existing shared content pipeline."""
+        return self._process_content(
+            text=text,
+            file_name=title,
+            file_type=FileType.TEXT.value,
+            file_path="",
+            file_size=len(text.encode("utf-8")),
+            is_image=False,
+        )
+
     def process_link(self, url: str) -> MemoryResponse:
         """
         بياخد لينك ويحفظه كـ memory.
@@ -77,7 +90,7 @@ class IngestPipeline:
         thumbnail_path = None
         if thumb_url:
             thumb_id = uuid.uuid4().hex[:8]
-            candidate_path = f"storage/uploads/link_{thumb_id}.jpg"
+            candidate_path = str(settings.upload_dir / f"link_{thumb_id}.jpg")
             if link_service.download_thumbnail(thumb_url, candidate_path):
                 thumbnail_path = candidate_path
 
@@ -238,7 +251,7 @@ class IngestPipeline:
 
         memory = Memory(
             file_name=file_name,
-            file_type=FileType(file_type) if file_type in ["image", "text"] else FileType.TEXT,
+            file_type=self._to_file_type(file_type),
             file_path=file_path,
             file_size=file_size,
             file_hash=self._calculate_hash(file_path) if file_path else "",
@@ -318,6 +331,13 @@ class IngestPipeline:
     def _calculate_hash(self, file_path):
         with open(file_path, "rb") as f:
             return hashlib.md5(f.read()).hexdigest()
+
+    @staticmethod
+    def _to_file_type(file_type: str) -> FileType:
+        try:
+            return FileType(file_type)
+        except ValueError as exc:
+            raise InvalidRequestException("The supplied file type is unsupported.") from exc
 
 
 # Singleton

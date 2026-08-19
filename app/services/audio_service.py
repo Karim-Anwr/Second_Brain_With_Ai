@@ -3,6 +3,7 @@ import uuid
 from pathlib import Path
 import yt_dlp
 from faster_whisper import WhisperModel
+from app.core.config import settings
 from app.core.exceptions import SecondBrainException
 
 
@@ -21,7 +22,7 @@ class AudioService:
     """
 
     def __init__(self):
-        self.temp_dir = Path("storage/temp_audio")
+        self.temp_dir = Path(settings.temp_audio_dir)
         self.temp_dir.mkdir(parents=True, exist_ok=True)
         self.model = None  # lazy loading
 

@@ -20,7 +20,7 @@ class StorageService:
 
     def __init__(self):
         self.client = chromadb.PersistentClient(
-            path=settings.chroma_dir
+            path=str(settings.chroma_dir)
         )
         self.collection = self.client.get_or_create_collection(
             name=settings.chroma_collection,
@@ -361,6 +361,14 @@ class StorageService:
 
         except Exception as e:
             raise StorageException(f"فشل تحديث الـ favorite: {e}")
+
+    def memory_exists(self, memory_id: str) -> bool:
+        """Check that at least one stored chunk belongs to a memory identifier."""
+        try:
+            results = self.collection.get(where={"memory_id": {"$eq": memory_id}})
+            return bool(results.get("ids"))
+        except Exception as exc:
+            raise StorageException("Failed to verify the requested memory.") from exc
 # ============================================================
 # Singleton
 # ============================================================
