@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import os
 from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from app.db.base import Base
+from app.db.configuration import get_database_url_from_environment
 
 
 config = context.config
@@ -20,11 +20,11 @@ target_metadata = Base.metadata
 
 
 def _database_url() -> str:
-    database_url = os.environ.get("DATABASE_URL")
+    database_url = get_database_url_from_environment()
     if not database_url:
         raise RuntimeError("DATABASE_URL is required for Alembic migrations.")
-    if not database_url.startswith(("postgresql://", "postgresql+psycopg://")):
-        raise RuntimeError("DATABASE_URL must use a PostgreSQL URL for Alembic migrations.")
+    if not database_url.startswith("postgresql+psycopg://"):
+        raise RuntimeError("DATABASE_URL must use a postgresql+psycopg URL for Alembic migrations.")
     return database_url
 
 

@@ -23,9 +23,9 @@ _session_factory: sessionmaker[Session] | None = None
 
 
 def build_engine(database_url: str) -> Engine:
-    """Build a synchronous PostgreSQL engine without opening a connection."""
-    if not database_url.startswith(("postgresql://", "postgresql+psycopg://")):
-        raise DatabaseConfigurationError("DATABASE_URL must use a PostgreSQL URL.")
+    """Build a synchronous psycopg v3 PostgreSQL engine without connecting."""
+    if not database_url.startswith("postgresql+psycopg://"):
+        raise DatabaseConfigurationError("DATABASE_URL must use a postgresql+psycopg URL.")
     return create_engine(database_url, pool_pre_ping=True, future=True)
 
 
@@ -53,10 +53,13 @@ def get_session_factory() -> sessionmaker[Session]:
 
 
 def get_db() -> Generator[Session, None, None]:
-    """Yield and always close a request-scoped database session."""
+    """Yield a request-scoped session and roll it back if the request fails."""
     session = get_session_factory()()
     try:
         yield session
+    except:
+        session.rollback()
+        raise
     finally:
         session.close()
 
