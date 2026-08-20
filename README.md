@@ -91,6 +91,18 @@ pip install -r app/requirements.txt
 cp .env.example .env
 ```
 
+### Database foundation (Phase 2.1)
+
+Phase 2.1 introduces a **migration-driven PostgreSQL foundation** only. Set `DATABASE_URL` in the untracked `.env` file to a non-production PostgreSQL database before running migrations. The application does not connect to PostgreSQL at startup and does not create tables automatically.
+
+```bash
+# Example only — use non-production credentials and do not commit them.
+export DATABASE_URL='postgresql+psycopg://<user>:<password>@<host>:5432/<database>'
+alembic upgrade head
+```
+
+No application tables exist in Phase 2.1; the first schema migration is intentionally deferred to Phase 2.2.
+
 ### 5. Run the server
 
 ```bash

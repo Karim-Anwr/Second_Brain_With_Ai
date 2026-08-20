@@ -35,6 +35,10 @@ class Settings(BaseSettings):
         "http://localhost:5173,http://127.0.0.1:5173"
     )
 
+    # Database. Phase 2.1 intentionally does not provide a fallback database.
+    # Configure DATABASE_URL explicitly before adding database-backed endpoints.
+    database_url: str | None = None
+
     # AI
     embedding_model: str = "BAAI/bge-m3"
     max_chunk_size: int = 500

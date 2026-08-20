@@ -38,7 +38,14 @@ async def lifespan(app: FastAPI):
     app.state.storage_service = storage_service
     app.state.llm_service = llm_service
     app.state.session_service = session_service
-    yield
+    try:
+        yield
+    finally:
+        # Phase 2.1 only disposes an already-created pool. It does not connect
+        # to PostgreSQL or create tables during application startup.
+        from app.db.session import close_database
+
+        close_database()
 
 
 app = FastAPI(
