@@ -9,13 +9,14 @@ from sqlalchemy import engine_from_config, pool
 
 from app.db.base import Base
 from app.db.configuration import get_database_url_from_environment
+from app.db.models import User
 
 
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Models will be imported here as later Phase 2 steps introduce them.
+# Import model modules before exposing metadata to Alembic autogeneration.
 target_metadata = Base.metadata
 
 

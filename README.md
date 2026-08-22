@@ -103,7 +103,7 @@ DATABASE_URL=postgresql+psycopg://<user>:<password>@<host>:5432/<database>
 alembic upgrade head
 ```
 
-No application tables exist in Phase 2.1; the first schema migration is intentionally deferred to Phase 2.2.
+Phase 2.2 introduces the first schema migration: a PostgreSQL `users` table with canonical, unique email storage and a `password_hash` column for future authentication. It does not add registration, login, tokens, or any authentication API.
 
 ### 5. Run the server
 
