@@ -9,7 +9,7 @@ from sqlalchemy import engine_from_config, pool
 
 from app.db.base import Base
 from app.db.configuration import get_database_url_from_environment
-from app.db.models import RefreshTokenSession, User
+from app.db.models import OwnedResource, RefreshTokenSession, User
 
 
 config = context.config
