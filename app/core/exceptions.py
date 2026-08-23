@@ -20,6 +20,20 @@ class InvalidRequestException(AppError):
         super().__init__("invalid_request", message, 400)
 
 
+class AuthenticationFailedException(AppError):
+    """Generic login failure that does not reveal account state."""
+
+    def __init__(self):
+        super().__init__("authentication_failed", "Invalid email or password.", 401)
+
+
+class RegistrationFailedException(AppError):
+    """Client-safe registration conflict without exposing database details."""
+
+    def __init__(self):
+        super().__init__("registration_failed", "Unable to create account.", 409)
+
+
 class UploadTooLargeException(AppError):
     def __init__(self):
         super().__init__("upload_too_large", "The uploaded file exceeds the configured size limit.", 413)

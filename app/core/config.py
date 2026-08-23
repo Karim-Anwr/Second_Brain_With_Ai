@@ -43,6 +43,13 @@ class Settings(BaseSettings):
     # intentionally required only when refresh-token hashing is invoked.
     refresh_token_hash_secret: str = ""
 
+    # Authentication issuance. Secrets remain empty until an auth endpoint is
+    # deliberately used; token helpers reject missing or unsafe configuration.
+    jwt_signing_secret: str = ""
+    jwt_algorithm: str = "HS256"
+    access_token_lifetime_seconds: int = 900
+    refresh_token_lifetime_seconds: int = 60 * 60 * 24 * 30
+
     # AI
     embedding_model: str = "BAAI/bge-m3"
     max_chunk_size: int = 500

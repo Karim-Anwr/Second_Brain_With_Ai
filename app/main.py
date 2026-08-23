@@ -6,7 +6,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.routes import chat, search, upload
+from app.api.routes import auth, chat, search, upload
 from app.core.config import settings
 from app.core.exceptions import (
     AppError,
@@ -112,6 +112,7 @@ async def handle_unexpected_error(_: Request, exc: Exception):
 app.include_router(upload.router, prefix="/api/v1", tags=["Upload"])
 app.include_router(search.router, prefix="/api/v1", tags=["Search"])
 app.include_router(chat.router, prefix="/api/v1", tags=["Chat"])
+app.include_router(auth.router, prefix="/api/v1", tags=["Authentication"])
 
 
 @app.get("/")
