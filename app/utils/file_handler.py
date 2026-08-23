@@ -74,6 +74,18 @@ def remove_upload_file(file_path: str | Path) -> None:
         target.unlink()
 
 
+def remove_owned_upload_file(file_path: str | Path) -> None:
+    """Clean up a server-returned owned upload after downstream ingestion fails.
+
+    This is cleanup only; route authorization remains the responsibility of the
+    explicit owner-aware persistence and resolution primitives.
+    """
+    target = Path(file_path).resolve()
+    owner_root = Path(settings.upload_dir).resolve() / "owners"
+    if owner_root in target.parents and target.exists():
+        target.unlink()
+
+
 def _owner_upload_dir(owner_user_id: str) -> Path:
     """Derive an internal namespace from an authoritative UUID, never a client path."""
     owner_root = Path(settings.upload_dir).resolve() / "owners" / owner_user_id

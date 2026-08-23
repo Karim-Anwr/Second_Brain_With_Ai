@@ -16,6 +16,7 @@ from app.core.exceptions import (
     StorageException,
     UnsupportedFileTypeException,
 )
+from app.services.ownership_service import OwnershipMismatchError, OwnershipResourceNotFoundError
 from app.models.api import ErrorResponse
 
 
@@ -66,6 +67,14 @@ app.add_middleware(
 @app.exception_handler(AppError)
 async def handle_app_error(_: Request, exc: AppError):
     return error_response(exc.status_code, exc.code, exc.message)
+
+
+async def ownership_not_found_response(_: Request, __: Exception):
+    return error_response(404, "resource_not_found", "Resource was not found.")
+
+
+app.add_exception_handler(OwnershipMismatchError, ownership_not_found_response)
+app.add_exception_handler(OwnershipResourceNotFoundError, ownership_not_found_response)
 
 
 @app.exception_handler(UnsupportedFileTypeException)

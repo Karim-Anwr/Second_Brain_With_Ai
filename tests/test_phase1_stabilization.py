@@ -1,6 +1,7 @@
 import asyncio
 import io
 import socket
+from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
@@ -9,9 +10,12 @@ from starlette.datastructures import Headers, UploadFile
 from app.api.routes import chat as chat_routes
 from app.api.routes import search as search_routes
 from app.api.routes import upload as upload_routes
+from app.auth.current_user import CurrentUser
+from app.auth.dependencies import get_current_user
 from app.core.config import settings
 from app.core.exceptions import (
     InvalidRequestException,
+    ResourceNotFoundException,
     StorageCorruptionException,
     StorageException,
     UnsafeURLError,
@@ -22,6 +26,7 @@ from app.main import app
 from app.models.conversation import ExtractedMemory, MemoryType
 from app.models.memory import Category, FileType, MemoryResponse
 from app.pipelines.ingest_pipeline import IngestPipeline
+from app.db.session import get_db
 from app.services.graph_service import GraphService
 from app.services.link_service import LinkService
 from app.utils.file_handler import save_upload_file
@@ -29,8 +34,14 @@ from app.utils.file_handler import save_upload_file
 
 @pytest.fixture
 def client():
-    with TestClient(app, raise_server_exceptions=False) as test_client:
-        yield test_client
+    db = type("RouteDb", (), {"commit": lambda self: None, "rollback": lambda self: None})()
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(UUID("10000000-0000-0000-0000-000000000001"))
+    app.dependency_overrides[get_db] = lambda: db
+    try:
+        with TestClient(app, raise_server_exceptions=False) as test_client:
+            yield test_client
+    finally:
+        app.dependency_overrides.clear()
 
 
 def response(file_type: FileType = FileType.TEXT) -> MemoryResponse:
@@ -49,16 +60,18 @@ def response(file_type: FileType = FileType.TEXT) -> MemoryResponse:
 def test_text_upload_uses_existing_pipeline(client, monkeypatch):
     called = {}
 
-    def process_text(text, title):
-        called.update({"text": text, "title": title})
+    def process_text_owned(db, owner_user_id, text, title):
+        called.update({"db": db, "owner_user_id": owner_user_id, "text": text, "title": title})
         return response()
 
-    monkeypatch.setattr(upload_routes.ingest_pipeline, "process_text", process_text)
+    monkeypatch.setattr(upload_routes.ingest_pipeline, "process_text_owned", process_text_owned)
     result = client.post("/api/v1/upload/text", json={"title": "note", "text": "hello"})
 
     assert result.status_code == 200
     assert result.json()["file_type"] == "text"
-    assert called == {"text": "hello", "title": "note"}
+    assert called["text"] == "hello"
+    assert called["title"] == "note"
+    assert called["owner_user_id"] == UUID("10000000-0000-0000-0000-000000000001")
 
 
 def test_process_text_delegates_to_shared_pipeline(monkeypatch):
@@ -143,7 +156,8 @@ def test_chat_returns_persisted_assistant_turn_when_sidecar_is_corrupt(monkeypat
 
 def test_favorite_route_uses_singleton_binding(client, monkeypatch):
     class Storage:
-        def set_favorite(self, memory_id, is_favorite):
+        def set_favorite_owned(self, _db, owner_user_id, memory_id, is_favorite):
+            assert owner_user_id == UUID("10000000-0000-0000-0000-000000000001")
             return memory_id == "mem_1" and is_favorite
 
     monkeypatch.setattr(search_routes, "storage_service", Storage())
@@ -160,7 +174,11 @@ def test_session_listing_skips_sidecars_and_malformed_files(isolated_sessions):
 
 
 def test_unknown_session_api_returns_stable_404(client, isolated_sessions, monkeypatch):
-    monkeypatch.setattr(chat_routes, "session_service", isolated_sessions)
+    class Sessions:
+        def get_session_owned(self, *_args):
+            raise ResourceNotFoundException("Session")
+
+    monkeypatch.setattr(chat_routes, "session_service", Sessions())
     result = client.get("/api/v1/sessions/session_deadbeef")
     assert result.status_code == 404
     assert result.json()["error"]["code"] == "resource_not_found"
@@ -170,7 +188,15 @@ def test_delete_session_removes_sidecar(client, isolated_sessions, monkeypatch):
     session = isolated_sessions.create_session()
     sidecar = isolated_sessions.sessions_dir / f"{session.id}_memories.json"
     sidecar.write_text("[]", encoding="utf-8")
-    monkeypatch.setattr(chat_routes, "session_service", isolated_sessions)
+
+    def delete_session_owned(_db, _owner_user_id, session_id):
+        return isolated_sessions.delete_session(session_id)
+
+    monkeypatch.setattr(
+        chat_routes,
+        "session_service",
+        type("Sessions", (), {"delete_session_owned": staticmethod(delete_session_owned)})(),
+    )
 
     result = client.delete(f"/api/v1/sessions/{session.id}")
     assert result.status_code == 200
@@ -179,18 +205,17 @@ def test_delete_session_removes_sidecar(client, isolated_sessions, monkeypatch):
 
 
 def test_graph_routes_validate_depth_and_memory_ids(client, monkeypatch):
-    class Storage:
-        def memory_exists(self, memory_id):
-            return memory_id == "mem_1"
-
     class Graph:
-        def get_related(self, memory_id, depth):
+        def get_related_owned(self, _db, _owner_user_id, memory_id, depth):
+            if memory_id != "mem_1":
+                raise ResourceNotFoundException("Memory")
             return []
 
-        def add_edge(self, *args, **kwargs):
+        def add_edge_owned(self, _db, _owner_user_id, from_id, to_id, *args, **kwargs):
+            if "mem_missing" in (from_id, to_id):
+                raise ResourceNotFoundException("Memory")
             return True
 
-    monkeypatch.setattr(search_routes, "storage_service", Storage())
     monkeypatch.setattr(search_routes, "graph_service", Graph())
     invalid_depth = client.get("/api/v1/memories/mem_1/related?depth=99")
     missing_memory = client.post("/api/v1/memories/link", json={"from_id": "mem_1", "to_id": "mem_missing"})
@@ -226,7 +251,14 @@ def test_corrupt_session_sidecar_is_preserved_and_returns_storage_error(client, 
         isolated_sessions.save_extracted_memory(session.id, memory)
     assert sidecar.read_text(encoding="utf-8") == corrupt_content
 
-    monkeypatch.setattr(chat_routes, "session_service", isolated_sessions)
+    def get_extracted_memories_owned(_db, _owner_user_id, session_id):
+        return isolated_sessions.get_extracted_memories(session_id)
+
+    monkeypatch.setattr(
+        chat_routes,
+        "session_service",
+        type("Sessions", (), {"get_extracted_memories_owned": staticmethod(get_extracted_memories_owned)})(),
+    )
     result = client.get(f"/api/v1/sessions/{session.id}/memories")
     assert result.status_code == 409
     assert result.json()["error"]["code"] == "storage_corrupt"
@@ -457,7 +489,7 @@ def test_link_ingestion_continues_when_thumbnail_download_is_unsafe(monkeypatch)
 
 
 def test_unexpected_error_uses_safe_response(client, monkeypatch):
-    monkeypatch.setattr(search_routes.search_pipeline, "search", lambda **_: (_ for _ in ()).throw(RuntimeError("secret filesystem path")))
+    monkeypatch.setattr(search_routes.search_pipeline, "search_owned", lambda **_: (_ for _ in ()).throw(RuntimeError("secret filesystem path")))
     result = client.post("/api/v1/search", json={"query": "anything"})
     assert result.status_code == 500
     assert result.json()["error"]["code"] == "internal_error"

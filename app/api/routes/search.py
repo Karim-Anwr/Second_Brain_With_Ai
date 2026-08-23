@@ -1,8 +1,14 @@
-from fastapi import APIRouter, Query
-from pydantic import BaseModel, Field
+from typing import Annotated
 
+from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
+
+from app.auth.current_user import CurrentUser
+from app.auth.dependencies import get_current_user
 from app.core.config import settings
 from app.core.exceptions import InvalidRequestException, ResourceNotFoundException
+from app.db.session import get_db
 from app.models.api import (
     FavoriteResponse,
     LinkMemoriesResponse,
@@ -25,14 +31,20 @@ class SearchRequest(BaseModel):
 
 
 @router.post("/search", response_model=SearchResponse)
-async def search_memories(request: SearchRequest):
+async def search_memories(
+    request: SearchRequest,
+    current_user: Annotated[CurrentUser, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
     filters = {}
     if request.category:
         filters["category"] = request.category
     if request.is_favorite is not None:
         filters["is_favorite"] = request.is_favorite
 
-    result = search_pipeline.search(
+    result = search_pipeline.search_owned(
+        db=db,
+        owner_user_id=current_user.id,
         query=request.query,
         top_k=request.top_k,
         filters=filters or None,
@@ -68,8 +80,12 @@ class FavoriteRequest(BaseModel):
 
 
 @router.post("/memories/favorite", response_model=FavoriteResponse)
-async def toggle_favorite(request: FavoriteRequest):
-    if not storage_service.set_favorite(request.memory_id, request.is_favorite):
+async def toggle_favorite(
+    request: FavoriteRequest,
+    current_user: Annotated[CurrentUser, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    if not storage_service.set_favorite_owned(db, current_user.id, request.memory_id, request.is_favorite):
         raise ResourceNotFoundException("Memory")
     return {"memory_id": request.memory_id, "is_favorite": request.is_favorite, "status": "updated"}
 
@@ -79,27 +95,27 @@ class LinkMemoriesRequest(BaseModel):
     to_id: str = Field(..., min_length=1, max_length=128)
 
 
-def _require_memory(memory_id: str) -> None:
-    if not storage_service.memory_exists(memory_id):
-        raise ResourceNotFoundException("Memory")
-
-
 @router.get("/memories/{memory_id}/related", response_model=RelatedMemoriesResponse)
 async def get_related_memories(
+    current_user: Annotated[CurrentUser, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
     memory_id: str,
     depth: int = Query(default=1, ge=1, le=settings.max_graph_depth),
 ):
-    _require_memory(memory_id)
-    related = graph_service.get_related(memory_id, depth=depth)
+    related = graph_service.get_related_owned(db, current_user.id, memory_id, depth=depth)
     return {"memory_id": memory_id, "total": len(related), "related": related}
 
 
 @router.post("/memories/link", response_model=LinkMemoriesResponse)
-async def link_memories(request: LinkMemoriesRequest):
+async def link_memories(
+    request: LinkMemoriesRequest,
+    current_user: Annotated[CurrentUser, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
     if request.from_id == request.to_id:
         raise InvalidRequestException("A memory cannot be linked to itself.")
-    _require_memory(request.from_id)
-    _require_memory(request.to_id)
-    if not graph_service.add_edge(request.from_id, request.to_id, relation_type="manual", score=1.0):
+    if not graph_service.add_edge_owned(
+        db, current_user.id, request.from_id, request.to_id, relation_type="manual", score=1.0
+    ):
         raise InvalidRequestException("The requested memory link is invalid.")
     return {"status": "linked"}
