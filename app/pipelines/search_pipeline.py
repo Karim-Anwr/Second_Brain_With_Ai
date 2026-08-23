@@ -3,9 +3,96 @@ from app.services.storage_service import storage_service
 from app.services.llm_service import llm_service
 from app.utils.arabic_normalizer import arabic_normalizer
 from app.models.memory import MemorySearchResult
-
+from sqlalchemy.orm import Session
+from uuid import UUID
 
 class SearchPipeline:
+
+    def retrieve_owned(
+        self,
+        db: Session,
+        owner_user_id: UUID,
+        query: str,
+        top_k: int = 5,
+        filters: dict | None = None,
+    ) -> dict:
+        """Retrieve only owner-filtered chunks before merge, boost, or rerank."""
+        normalized_query = arabic_normalizer.normalize_query(query)
+        understanding = llm_service.understand_query(normalized_query)
+        intent = understanding.get("intent", query)
+        keywords = understanding.get("keywords", [])
+        entities = understanding.get("entities", [])
+        expanded = understanding.get("expanded_queries", [])
+        category = understanding.get("category", "any")
+        search_filters = dict(filters) if filters else {}
+        if category != "any":
+            search_filters["category"] = category
+
+        all_queries = list(dict.fromkeys([normalized_query, intent] + expanded[:3]))
+        all_chunks = []
+        for embedding in embedding_service.generate_batch(all_queries):
+            # This is deliberately the first retrieval; no global candidate set exists here.
+            all_chunks.extend(
+                storage_service.search_raw_chunks_owned(
+                    db=db,
+                    owner_user_id=owner_user_id,
+                    query_embedding=embedding,
+                    top_k=15,
+                    filters=search_filters or None,
+                )
+            )
+
+        boosted = self._apply_boost(self._merge_chunks(all_chunks), keywords, entities)
+        boosted.sort(key=lambda item: item.get("final_score", 0), reverse=True)
+        reranked = llm_service.rerank(query=query, intent=intent, chunks=boosted[:15])
+        results = self._build_final_results(reranked, top_k)
+        for result in results:
+            storage_service.increment_access_count_owned(db, owner_user_id, result.memory_id)
+        return {"results": results, "intent": intent}
+
+    def search_owned(
+        self,
+        db: Session,
+        owner_user_id: UUID,
+        query: str,
+        top_k: int = 5,
+        filters: dict | None = None,
+    ) -> dict:
+        retrieval = self.retrieve_owned(db, owner_user_id, query, top_k, filters)
+        results = retrieval["results"]
+        return {
+            "query": query,
+            "total": len(results),
+            "results": results,
+            "llm_answer": llm_service.answer_from_memories(
+                query=query, memories=results, user_intent=retrieval["intent"]
+            ),
+        }
+
+    def search_by_filter_owned(
+        self,
+        db: Session,
+        owner_user_id: UUID,
+        category: str | None = None,
+        is_favorite: bool | None = None,
+        file_type: str | None = None,
+        top_k: int = 10,
+    ) -> dict:
+        filters = {}
+        if category:
+            filters["category"] = category
+        if is_favorite is not None:
+            filters["is_favorite"] = is_favorite
+        if file_type:
+            filters["file_type"] = file_type
+        chunks = storage_service.search_raw_chunks_owned(
+            db=db,
+            owner_user_id=owner_user_id,
+            query_embedding=embedding_service.generate("show memories"),
+            top_k=top_k,
+            filters=filters or None,
+        )
+        return {"query": str(filters), "total": len(chunks), "results": self._build_final_results(chunks, top_k), "llm_answer": None}
 
     def retrieve(
     self,

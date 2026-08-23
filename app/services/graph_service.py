@@ -4,9 +4,14 @@ import tempfile
 import threading
 from datetime import datetime
 from pathlib import Path
+from uuid import UUID
+
+from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.exceptions import StorageCorruptionException, StorageException
+from app.db.models.owned_resource import OwnedResourceKind
+from app.services.ownership_service import OwnershipMismatchError, OwnershipResourceNotFoundError, OwnershipService
 
 
 class GraphService:
@@ -138,6 +143,115 @@ class GraphService:
             seen_ids.add(other_id)
             if score >= similarity_threshold:
                 self.add_edge(memory_id, other_id, "semantic", score)
+                linked += 1
+            if linked >= top_k:
+                break
+        return linked
+
+    def add_edge_owned(
+        self,
+        db: Session,
+        owner_user_id: UUID,
+        from_id: str,
+        to_id: str,
+        relation_type: str = "semantic",
+        score: float = 0.5,
+    ) -> bool:
+        """Create/update an edge only after both logical endpoints resolve to one owner."""
+        if from_id == to_id:
+            return False
+        ownership = OwnershipService(db)
+        ownership.require_owned_resource(owner_user_id=owner_user_id, resource_kind=OwnedResourceKind.MEMORY, resource_id=from_id)
+        ownership.require_owned_resource(owner_user_id=owner_user_id, resource_kind=OwnedResourceKind.MEMORY, resource_id=to_id)
+        owner_value = str(owner_user_id)
+        with self._lock:
+            edges = self._load_edges()
+            for edge in edges:
+                same_owner = edge.get("owner_user_id") == owner_value
+                same_pair = (edge["from"] == from_id and edge["to"] == to_id) or (
+                    edge["from"] == to_id and edge["to"] == from_id
+                )
+                if same_owner and same_pair:
+                    edge["score"] = max(edge["score"], score)
+                    self._save_edges(edges)
+                    return True
+            edges.append(
+                {
+                    "from": from_id,
+                    "to": to_id,
+                    "owner_user_id": owner_value,
+                    "relation_type": relation_type,
+                    "score": round(score, 4),
+                    "created_at": datetime.now().isoformat(),
+                }
+            )
+            self._save_edges(edges)
+            return True
+
+    def get_related_owned(
+        self, db: Session, owner_user_id: UUID, memory_id: str, depth: int = 1, min_score: float = 0.0
+    ) -> list[dict]:
+        ownership = OwnershipService(db)
+        ownership.require_owned_resource(
+            owner_user_id=owner_user_id, resource_kind=OwnedResourceKind.MEMORY, resource_id=memory_id
+        )
+        owner_value = str(owner_user_id)
+        edges = [edge for edge in self._load_edges() if edge.get("owner_user_id") == owner_value]
+        visited = {memory_id}
+        frontier = {memory_id}
+        results: list[dict] = []
+        for _ in range(depth):
+            next_frontier = set()
+            for edge in edges:
+                if edge.get("score", 0) < min_score:
+                    continue
+                neighbor = edge["to"] if edge.get("from") in frontier else edge["from"] if edge.get("to") in frontier else None
+                if neighbor is None or neighbor in visited:
+                    continue
+                try:
+                    ownership.require_owned_resource(
+                        owner_user_id=owner_user_id,
+                        resource_kind=OwnedResourceKind.MEMORY,
+                        resource_id=neighbor,
+                    )
+                except (OwnershipResourceNotFoundError, OwnershipMismatchError):
+                    continue
+                results.append({"memory_id": neighbor, "relation_type": edge.get("relation_type", "semantic"), "score": edge.get("score", 0.0)})
+                visited.add(neighbor)
+                next_frontier.add(neighbor)
+            frontier = next_frontier
+            if not frontier:
+                break
+        return sorted(results, key=lambda item: item["score"], reverse=True)
+
+    def auto_link_owned(
+        self,
+        db: Session,
+        owner_user_id: UUID,
+        memory_id: str,
+        embedding: list[float],
+        top_k: int = 3,
+        similarity_threshold: float = 0.6,
+    ) -> int:
+        """Auto-link only candidates returned by owner-scoped first-stage Chroma retrieval."""
+        from app.services.storage_service import storage_service
+
+        ownership = OwnershipService(db)
+        ownership.require_owned_resource(
+            owner_user_id=owner_user_id, resource_kind=OwnedResourceKind.MEMORY, resource_id=memory_id
+        )
+        raw_results = storage_service.search_raw_chunks_owned(
+            db=db, owner_user_id=owner_user_id, query_embedding=embedding, top_k=top_k + 5
+        )
+        linked = 0
+        seen_ids = {memory_id}
+        for chunk in raw_results:
+            other_id = chunk.get("metadata", {}).get("memory_id", "")
+            if other_id in seen_ids:
+                continue
+            seen_ids.add(other_id)
+            if chunk.get("semantic_score", 0) >= similarity_threshold:
+                self.add_edge_owned(db, owner_user_id, memory_id, other_id, "semantic", chunk["semantic_score"])
                 linked += 1
             if linked >= top_k:
                 break

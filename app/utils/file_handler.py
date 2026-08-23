@@ -3,9 +3,12 @@ import uuid
 from pathlib import Path
 
 from fastapi import UploadFile
+from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.db.models.owned_resource import OwnedResourceKind
 from app.core.exceptions import UnsupportedFileTypeException, UploadTooLargeException
+from app.services.ownership_service import OwnershipService
 
 
 SUPPORTED_TYPES = {
@@ -69,3 +72,59 @@ def remove_upload_file(file_path: str | Path) -> None:
     upload_root = Path(settings.upload_dir).resolve()
     if upload_root == target.parent and target.exists():
         target.unlink()
+
+
+def _owner_upload_dir(owner_user_id: str) -> Path:
+    """Derive an internal namespace from an authoritative UUID, never a client path."""
+    owner_root = Path(settings.upload_dir).resolve() / "owners" / owner_user_id
+    owner_root.mkdir(parents=True, exist_ok=True)
+    return owner_root
+
+
+async def save_upload_file_owned(db: Session, owner_user_id, upload_file: UploadFile) -> tuple[str, str, str]:
+    """Save a new upload in a server-derived owner namespace after registry staging."""
+    content_type = upload_file.content_type
+    file_type = get_file_type(content_type)
+    extension = SUPPORTED_TYPES[content_type][1]
+    file_id = str(uuid.uuid4())
+    owner_value = str(owner_user_id)
+    owner_dir = _owner_upload_dir(owner_value)
+    temporary_path = owner_dir / f".{file_id}.part"
+    final_path = owner_dir / f"{file_id}{extension}"
+    OwnershipService(db).register_resource(
+        owner_user_id=owner_user_id,
+        resource_kind=OwnedResourceKind.FILE,
+        resource_id=file_id,
+    )
+    total_size = 0
+    try:
+        with open(temporary_path, "wb") as buffer:
+            while chunk := await upload_file.read(1024 * 1024):
+                total_size += len(chunk)
+                if total_size > settings.max_upload_size_bytes:
+                    raise UploadTooLargeException()
+                buffer.write(chunk)
+        with open(temporary_path, "rb") as uploaded:
+            _validate_signature(uploaded.read(16), file_type)
+        os.replace(temporary_path, final_path)
+        return file_id, str(final_path), file_type
+    except Exception:
+        temporary_path.unlink(missing_ok=True)
+        final_path.unlink(missing_ok=True)
+        raise
+
+
+def resolve_upload_file_owned(db: Session, owner_user_id, file_id: str, extension: str) -> Path:
+    """Resolve a new file only after owner-scoped registry validation."""
+    OwnershipService(db).require_owned_resource(
+        owner_user_id=owner_user_id,
+        resource_kind=OwnedResourceKind.FILE,
+        resource_id=file_id,
+    )
+    if not extension.startswith(".") or "/" in extension or "\\" in extension:
+        raise ValueError("file extension is invalid")
+    candidate = (_owner_upload_dir(str(owner_user_id)) / f"{file_id}{extension}").resolve()
+    owner_dir = _owner_upload_dir(str(owner_user_id)).resolve()
+    if owner_dir not in candidate.parents or not candidate.exists():
+        raise FileNotFoundError("owned file was not found")
+    return candidate

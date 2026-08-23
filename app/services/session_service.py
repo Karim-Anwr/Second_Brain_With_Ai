@@ -7,8 +7,12 @@ import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from uuid import UUID
+
+from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.db.models.owned_resource import OwnedResourceKind
 from app.core.exceptions import (
     InvalidRequestException,
     ResourceNotFoundException,
@@ -16,6 +20,7 @@ from app.core.exceptions import (
     StorageException,
 )
 from app.models.conversation import ChatMessage, ChatSession, ExtractedMemory, MessageRole
+from app.services.ownership_service import OwnershipService
 
 
 logger = logging.getLogger(__name__)
@@ -42,6 +47,25 @@ class SessionService:
 
     def _memories_path(self, session_id: str) -> Path:
         return self.sessions_dir / f"{self._validate_session_id(session_id)}_memories.json"
+
+    def _owned_sessions_dir(self, owner_user_id: UUID) -> Path:
+        directory = self.sessions_dir / "owners" / str(owner_user_id)
+        directory.mkdir(parents=True, exist_ok=True)
+        return directory
+
+    def _owned_session_path(self, owner_user_id: UUID, session_id: str) -> Path:
+        return self._owned_sessions_dir(owner_user_id) / f"{self._validate_session_id(session_id)}.json"
+
+    def _owned_memories_path(self, owner_user_id: UUID, session_id: str) -> Path:
+        return self._owned_sessions_dir(owner_user_id) / f"{self._validate_session_id(session_id)}_memories.json"
+
+    @staticmethod
+    def _require_owned_session(db: Session, owner_user_id: UUID, session_id: str) -> None:
+        OwnershipService(db).require_owned_resource(
+            owner_user_id=owner_user_id,
+            resource_kind=OwnedResourceKind.CHAT_SESSION,
+            resource_id=session_id,
+        )
 
     def _atomic_write_json(self, path: Path, value: Any) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -73,6 +97,17 @@ class SessionService:
         self._save_session(session)
         return session
 
+    def create_session_owned(self, db: Session, owner_user_id: UUID) -> ChatSession:
+        """Create a new session under a server-derived owner namespace."""
+        session = ChatSession()
+        OwnershipService(db).register_resource(
+            owner_user_id=owner_user_id,
+            resource_kind=OwnedResourceKind.CHAT_SESSION,
+            resource_id=session.id,
+        )
+        self._atomic_write_json(self._owned_session_path(owner_user_id, session.id), session.model_dump(mode="json"))
+        return session
+
     def get_session(self, session_id: str) -> ChatSession:
         path = self._session_path(session_id)
         if not path.exists():
@@ -84,6 +119,19 @@ class SessionService:
             return ChatSession(**data)
         except (json.JSONDecodeError, ValueError, TypeError) as exc:
             logger.warning("Unable to read session %s", session_id, exc_info=exc)
+            raise ResourceNotFoundException("Session") from exc
+
+    def get_session_owned(self, db: Session, owner_user_id: UUID, session_id: str) -> ChatSession:
+        self._require_owned_session(db, owner_user_id, session_id)
+        path = self._owned_session_path(owner_user_id, session_id)
+        if not path.exists():
+            raise ResourceNotFoundException("Session")
+        try:
+            data = self._load_json(path)
+            if not isinstance(data, dict) or data.get("id") != session_id:
+                raise ValueError("invalid owned session shape")
+            return ChatSession(**data)
+        except (json.JSONDecodeError, ValueError, TypeError) as exc:
             raise ResourceNotFoundException("Session") from exc
 
     def _save_session(self, session: ChatSession) -> None:
@@ -130,6 +178,83 @@ class SessionService:
             session_path.unlink()
             memories_path.unlink(missing_ok=True)
         return True
+
+    def delete_session_owned(self, db: Session, owner_user_id: UUID, session_id: str) -> bool:
+        self._require_owned_session(db, owner_user_id, session_id)
+        session_path = self._owned_session_path(owner_user_id, session_id)
+        memories_path = self._owned_memories_path(owner_user_id, session_id)
+        with self._lock:
+            if not session_path.exists():
+                return False
+            session_path.unlink()
+            memories_path.unlink(missing_ok=True)
+        return True
+
+    def list_sessions_owned(self, db: Session, owner_user_id: UUID) -> list[dict]:
+        directory = self._owned_sessions_dir(owner_user_id)
+        sessions: list[dict] = []
+        for path in sorted(directory.glob("session_*.json"), key=lambda item: item.stat().st_mtime, reverse=True):
+            if path.name.endswith("_memories.json"):
+                continue
+            session_id = path.stem
+            try:
+                session = self.get_session_owned(db, owner_user_id, session_id)
+            except (ResourceNotFoundException, StorageException):
+                continue
+            sessions.append(
+                {
+                    "id": session.id,
+                    "title": session.title,
+                    "total_messages": session.total_messages,
+                    "created_at": session.created_at,
+                    "updated_at": session.updated_at,
+                }
+            )
+        return sessions[:20]
+
+    def add_message_owned(
+        self,
+        db: Session,
+        owner_user_id: UUID,
+        session_id: str,
+        role: MessageRole,
+        content: str,
+        memory_ids: list[str] | None = None,
+    ) -> ChatMessage:
+        with self._lock:
+            session = self.get_session_owned(db, owner_user_id, session_id)
+            message = ChatMessage(session_id=session_id, role=role, content=content, memory_ids=memory_ids or [])
+            session.messages.append(message)
+            session.total_messages += 1
+            session.updated_at = datetime.now().isoformat()
+            self._atomic_write_json(self._owned_session_path(owner_user_id, session.id), session.model_dump(mode="json"))
+            return message
+
+    def get_recent_messages_owned(self, db: Session, owner_user_id: UUID, session_id: str, last_n: int = 10) -> list[ChatMessage]:
+        return self.get_session_owned(db, owner_user_id, session_id).messages[-last_n:]
+
+    def save_extracted_memory_owned(self, db: Session, owner_user_id: UUID, session_id: str, memory: ExtractedMemory) -> None:
+        self._require_owned_session(db, owner_user_id, session_id)
+        path = self._owned_memories_path(owner_user_id, session_id)
+        with self._lock:
+            memories: list[dict] = []
+            if path.exists():
+                data = self._load_json(path)
+                if not isinstance(data, list):
+                    raise StorageCorruptionException("Extracted-memory data")
+                memories = data
+            memories.append(memory.model_dump(mode="json"))
+            self._atomic_write_json(path, memories)
+
+    def get_extracted_memories_owned(self, db: Session, owner_user_id: UUID, session_id: str) -> list[ExtractedMemory]:
+        self._require_owned_session(db, owner_user_id, session_id)
+        path = self._owned_memories_path(owner_user_id, session_id)
+        if not path.exists():
+            return []
+        data = self._load_json(path)
+        if not isinstance(data, list):
+            raise StorageCorruptionException("Extracted-memory data")
+        return [ExtractedMemory(**memory) for memory in data]
 
     def add_message(
         self,

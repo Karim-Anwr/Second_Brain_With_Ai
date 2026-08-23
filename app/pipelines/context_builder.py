@@ -1,9 +1,34 @@
 from app.models.conversation import ChatMessage, ExtractedMemory, MessageRole
 from app.services.conversation_service import conversation_service
 from app.utils.arabic_normalizer import arabic_normalizer
+from sqlalchemy.orm import Session
+from uuid import UUID
 
 
 class ContextBuilder:
+
+    def build_owned(
+        self,
+        db: Session,
+        owner_user_id: UUID,
+        session_id: str,
+        user_query: str,
+        top_k_memories: int = 3,
+    ) -> dict:
+        recent_messages = conversation_service.get_short_term_memory_owned(db, owner_user_id, session_id, last_n=8)
+        long_term = conversation_service.get_long_term_memory_owned(db, owner_user_id, user_query, top_k_memories)
+        episodic = sorted(
+            conversation_service.get_episodic_memory_owned(db, owner_user_id, session_id),
+            key=lambda memory: memory.importance,
+            reverse=True,
+        )[:5]
+        return {
+            "context": self._format_context(recent_messages, long_term, episodic, user_query),
+            "recent_messages": recent_messages,
+            "long_term": long_term,
+            "episodic": episodic,
+            "memory_ids_used": [memory.get("metadata", {}).get("memory_id", "") for memory in long_term],
+        }
     """
     بيبني الـ context الكامل للـ LLM من 4 مصادر:
     

@@ -1,4 +1,11 @@
 import hashlib
+from io import BytesIO
+from pathlib import Path
+import tempfile
+from uuid import UUID
+from fastapi import UploadFile
+from sqlalchemy.orm import Session
+from starlette.datastructures import Headers
 from app.core.config import settings
 from app.services.ocr_service import ocr_service
 from app.services.embedding_service import embedding_service
@@ -14,9 +21,202 @@ from app.services.link_service import link_service
 from app.services.audio_service import audio_service
 from app.core.exceptions import InvalidRequestException, SecondBrainException, UnsafeURLError
 from app.services.graph_service import graph_service
+from app.utils.file_handler import save_upload_file_owned
 
 
 class IngestPipeline:
+
+    def process_text_owned(self, db: Session, owner_user_id: UUID, text: str, title: str) -> MemoryResponse:
+        """Create a new owner-scoped text memory without invoking the legacy global path."""
+        return self._process_content_owned(
+            db=db,
+            owner_user_id=owner_user_id,
+            text=text,
+            file_name=title,
+            file_type=FileType.TEXT.value,
+            file_path="",
+            file_size=len(text.encode("utf-8")),
+        )
+
+    def process_owned(
+        self,
+        db: Session,
+        owner_user_id: UUID,
+        file_path: str,
+        file_name: str,
+        file_type: str,
+        file_size: int = 0,
+    ) -> MemoryResponse:
+        """Create a new owner-scoped file-derived memory from an explicit owner path."""
+        try:
+            raw_text = ocr_service.extract_text(file_path=file_path, file_type=file_type)
+        except Exception:
+            raw_text = ""
+        return self._process_content_owned(
+            db=db,
+            owner_user_id=owner_user_id,
+            text=raw_text,
+            file_name=file_name,
+            file_type=file_type,
+            file_path=file_path,
+            file_size=file_size,
+        )
+
+    async def process_link_owned(self, db: Session, owner_user_id: UUID, url: str) -> MemoryResponse:
+        """Ingest a link through explicit owner-scoped memory, file, and graph primitives only."""
+        metadata, combined_text = self._build_link_content(url)
+        thumbnail_path = await self._save_link_thumbnail_owned(
+            db=db,
+            owner_user_id=owner_user_id,
+            thumbnail_url=metadata.get("thumbnail_url", ""),
+        )
+        platform = metadata.get("platform", "generic")
+        file_name = metadata.get("title") or f"{platform} link"
+        return self._process_content_owned(
+            db=db,
+            owner_user_id=owner_user_id,
+            text=combined_text,
+            file_name=file_name,
+            file_type=FileType.LINK.value,
+            file_path=thumbnail_path or "",
+            file_size=len(combined_text),
+        )
+
+    def _build_link_content(self, url: str) -> tuple[dict, str]:
+        metadata = link_service.extract_metadata(url)
+        platform = metadata.get("platform", "generic")
+        title = metadata.get("title", "")
+        desc = metadata.get("description", "")
+        author = metadata.get("author", "")
+
+        text_parts = [f"Platform: {platform}"]
+        if title:
+            text_parts.append(f"Title: {title}")
+        if author:
+            text_parts.append(f"Author: {author}")
+        if desc:
+            text_parts.append(f"Description: {desc}")
+        if platform in ("youtube", "tiktok"):
+            try:
+                audio_result = audio_service.process_video_audio(url)
+                transcript = audio_result.get("text", "")
+                if transcript:
+                    text_parts.append(f"Transcript:\n{transcript}")
+                    print(f"   ✅ Transcript اتضاف للمحتوى")
+            except SecondBrainException as e:
+                print(f"   ⚠️ مقدرناش نجيب الصوت: {e}")
+        text_parts.append(f"URL: {url}")
+        return metadata, "\n".join(text_parts)
+
+    async def _save_link_thumbnail_owned(
+        self, *, db: Session, owner_user_id: UUID, thumbnail_url: str
+    ) -> str | None:
+        """Download a safe optional thumbnail and persist it only through the owned file primitive."""
+        if not thumbnail_url:
+            return None
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as temporary_file:
+            temporary_path = Path(temporary_file.name)
+        temporary_path.unlink(missing_ok=True)
+        try:
+            try:
+                downloaded = link_service.download_thumbnail(thumbnail_url, str(temporary_path))
+            except UnsafeURLError:
+                print("   ⚠️ تم تخطي الصورة المصغرة غير الآمنة")
+                return None
+            if not downloaded:
+                return None
+            thumbnail_bytes = temporary_path.read_bytes()
+            content_type, extension = self._thumbnail_content_type(thumbnail_bytes)
+            if content_type is None:
+                return None
+            upload = UploadFile(
+                file=BytesIO(thumbnail_bytes),
+                filename=f"link_thumbnail{extension}",
+                headers=Headers({"content-type": content_type}),
+            )
+            try:
+                _, thumbnail_path, _ = await save_upload_file_owned(db, owner_user_id, upload)
+                return thumbnail_path
+            finally:
+                await upload.close()
+        finally:
+            temporary_path.unlink(missing_ok=True)
+
+    @staticmethod
+    def _thumbnail_content_type(content: bytes) -> tuple[str | None, str | None]:
+        if content.startswith(b"\xff\xd8\xff"):
+            return "image/jpeg", ".jpg"
+        if content.startswith(b"\x89PNG\r\n\x1a\n"):
+            return "image/png", ".png"
+        if content.startswith(b"RIFF") and content[8:12] == b"WEBP":
+            return "image/webp", ".webp"
+        return None, None
+
+    def _process_content_owned(
+        self,
+        *,
+        db: Session,
+        owner_user_id: UUID,
+        text: str,
+        file_name: str,
+        file_type: str,
+        file_path: str,
+        file_size: int,
+    ) -> MemoryResponse:
+        """Minimal explicit-owner path: build, register/project memory, then owner-scope graph linking."""
+        cleaned_text = arabic_normalizer.clean_ocr_text(text) if text else ""
+        chunks_obj = semantic_chunker.chunk(cleaned_text or file_name) or [Chunk(text=cleaned_text or file_name, index=0)]
+        chunk_texts = [chunk.text for chunk in chunks_obj]
+        memory = Memory(
+            file_name=file_name,
+            file_type=self._to_file_type(file_type),
+            file_path=file_path,
+            file_size=file_size,
+            file_hash=self._calculate_hash(file_path) if file_path else "",
+            raw_text=text,
+            summary=(cleaned_text or file_name)[:500],
+            chunks=chunk_texts,
+            total_chunks=len(chunk_texts),
+            recency_score=1.0,
+        )
+        searchable_texts = [
+            searchable_text_builder.build(
+                chunk=chunk,
+                file_name=file_name,
+                summary=memory.summary,
+                topics=[],
+                entities=[],
+                keywords=[],
+                tags=[],
+                main_topic=file_name,
+                prev_context="",
+            )
+            for chunk in chunk_texts
+        ]
+        embeddings = embedding_service.generate_batch(searchable_texts)
+        memory.chunk_ids = [f"{memory.id}_chunk_{index}" for index in range(len(chunk_texts))]
+        storage_service.save_memory_owned(
+            db=db,
+            owner_user_id=owner_user_id,
+            memory=memory,
+            embeddings=embeddings,
+            searchable_texts=searchable_texts,
+        )
+        if embeddings:
+            graph_service.auto_link_owned(
+                db=db, owner_user_id=owner_user_id, memory_id=memory.id, embedding=embeddings[0]
+            )
+        return MemoryResponse(
+            memory_id=memory.id,
+            file_name=memory.file_name,
+            file_type=memory.file_type,
+            summary=memory.summary,
+            tags=memory.tags,
+            category=memory.category,
+            importance=memory.importance_score,
+            total_chunks=memory.total_chunks,
+            status="success",
+        )
 
     def process(self, file_path, file_name, file_type, file_size=0):
 
@@ -57,35 +257,10 @@ class IngestPipeline:
         """
         print(f"\n بدأ معالجة لينك: {url}")
 
-        metadata  = link_service.extract_metadata(url)
-        platform  = metadata.get("platform", "generic")
-        title     = metadata.get("title", "")
-        desc      = metadata.get("description", "")
-        author    = metadata.get("author", "")
+        metadata, combined_text = self._build_link_content(url)
+        platform = metadata.get("platform", "generic")
+        title = metadata.get("title", "")
         thumb_url = metadata.get("thumbnail_url", "")
-
-        text_parts = [f"Platform: {platform}"]
-        if title:
-            text_parts.append(f"Title: {title}")
-        if author:
-            text_parts.append(f"Author: {author}")
-        if desc:
-            text_parts.append(f"Description: {desc}")
-
-        # ── محاولة استخراج الصوت لو المنصة بتدعم (يوتيوب/تيك توك) ──
-        if platform in ("youtube", "tiktok"):
-            try:
-                audio_result = audio_service.process_video_audio(url)
-                transcript = audio_result.get("text", "")
-                if transcript:
-                    text_parts.append(f"Transcript:\n{transcript}")
-                    print(f"   ✅ Transcript اتضاف للمحتوى")
-            except SecondBrainException as e:
-                print(f"   ⚠️ مقدرناش نجيب الصوت: {e}")
-                # نكمل عادي بالعنوان والوصف بس
-
-        text_parts.append(f"URL: {url}")
-        combined_text = "\n".join(text_parts)
 
         thumbnail_path = None
         if thumb_url:

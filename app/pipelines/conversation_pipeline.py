@@ -1,4 +1,6 @@
 from urllib import request
+from uuid import UUID
+from sqlalchemy.orm import Session
 
 from app.models.conversation import (
     ChatRequest, ChatResponse, MessageRole
@@ -12,6 +14,39 @@ from app.utils.arabic_normalizer import arabic_normalizer
 
 
 class ConversationPipeline:
+
+    def chat_owned(self, db: Session, owner_user_id: UUID, request: ChatRequest) -> ChatResponse:
+        """Internal owner-aware chat flow; public /chat continues using chat()."""
+        session = (
+            session_service.get_session_owned(db, owner_user_id, request.session_id)
+            if request.session_id
+            else session_service.create_session_owned(db, owner_user_id)
+        )
+        session_id = session.id
+        normalized_query = arabic_normalizer.normalize_query(request.message)
+        session_service.add_message_owned(db, owner_user_id, session_id, MessageRole.USER, request.message)
+        saved_memory_id = None
+        save_intent = llm_service.detect_save_intent(request.message)
+        if save_intent.get("wants_to_save") and save_intent.get("confidence", 0) > 0.6:
+            saved_memory_id = conversation_service.save_as_memory_owned(
+                db, owner_user_id, session_id, save_intent.get("content_to_save") or request.message
+            )
+        context_data = context_builder.build_owned(db, owner_user_id, session_id, normalized_query)
+        full_prompt = f"{context_builder.build_system_prompt()}\n\n{context_data['context']}\n\nاكتب رد طبيعي ومفيد للمستخدم."
+        answer = llm_service._call(full_prompt, fast=False)
+        assistant_message = session_service.add_message_owned(
+            db, owner_user_id, session_id, MessageRole.ASSISTANT, answer, context_data["memory_ids_used"]
+        )
+        extracted = conversation_service.process_and_extract_owned(
+            db, owner_user_id, session_id, request.message, answer
+        )
+        return ChatResponse(
+            session_id=session_id,
+            message_id=assistant_message.id,
+            answer=answer,
+            memories_used=context_data["memory_ids_used"],
+            new_memories=len(extracted) + (1 if saved_memory_id else 0),
+        )
     """
     الـ pipeline الكامل للمحادثة.
     
