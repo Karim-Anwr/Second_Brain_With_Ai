@@ -37,11 +37,32 @@ def _load_users_migration():
     return module
 
 
-def test_email_canonicalization_is_trimmed_lowercase_and_rejects_blank_values():
-    assert canonicalize_email("  Person@Example.COM  ") == "person@example.com"
-    assert _user_input(email="  Person@Example.COM  ").email == "person@example.com"
+@pytest.mark.parametrize(
+    ("raw_email", "canonical_email"),
+    [
+        ("  Person@Example.COM  ", "person@example.com"),
+        ("first.last+label@sub.example.co.uk", "first.last+label@sub.example.co.uk"),
+    ],
+)
+def test_email_canonicalization_is_trimmed_lowercase_and_accepts_normal_addresses(raw_email, canonical_email):
+    assert canonicalize_email(raw_email) == canonical_email
+    assert _user_input(email=raw_email).email == canonical_email
+
+
+@pytest.mark.parametrize("malformed_email", ["not-an-email", "@example.com", "person@"])
+def test_email_canonicalization_rejects_blank_and_malformed_addresses(malformed_email):
     with pytest.raises(ValueError, match="email must not be blank"):
         canonicalize_email("  ")
+    with pytest.raises(ValueError, match="email must be a valid address"):
+        canonicalize_email(malformed_email)
+    with pytest.raises(ValueError, match="email must be a valid address"):
+        _user_input(email=malformed_email)
+    with pytest.raises(ValueError, match="email must be a valid address"):
+        User(
+            email=malformed_email,
+            password_hash="$argon2id$prepared-storage-value",
+            display_name="Person",
+        )
 
 
 def test_user_metadata_declares_postgresql_uuid_duplicate_email_constraint_and_indexes():
