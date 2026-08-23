@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     # Configure DATABASE_URL explicitly before adding database-backed endpoints.
     database_url: str | None = None
 
+    # Authentication foundation. This secret keys refresh-token digests and is
+    # intentionally required only when refresh-token hashing is invoked.
+    refresh_token_hash_secret: str = ""
+
     # AI
     embedding_model: str = "BAAI/bge-m3"
     max_chunk_size: int = 500
