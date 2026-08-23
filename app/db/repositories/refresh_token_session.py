@@ -59,6 +59,32 @@ class RefreshTokenSessionRepository:
         )
         return self._session.scalar(statement)
 
+    def get_active_by_token_hash_for_update(self, token_hash: str) -> RefreshTokenSession | None:
+        """Lock an active session row so concurrent rotation attempts serialize in PostgreSQL."""
+        if not is_refresh_token_hash(token_hash):
+            return None
+        statement = (
+            select(RefreshTokenSession)
+            .where(
+                RefreshTokenSession.token_hash == token_hash,
+                RefreshTokenSession.revoked_at.is_(None),
+                RefreshTokenSession.expires_at > func.now(),
+            )
+            .with_for_update()
+        )
+        return self._session.scalar(statement)
+
+    def revoke_and_replace(
+        self,
+        token_session: RefreshTokenSession,
+        replacement_session: RefreshTokenSession,
+    ) -> RefreshTokenSession:
+        """Revoke one locked session and link it to its staged replacement without committing."""
+        token_session.revoked_at = datetime.now(timezone.utc)
+        token_session.replaced_by_session_id = replacement_session.id
+        self._session.flush()
+        return token_session
+
     def revoke(self, token_session: RefreshTokenSession) -> RefreshTokenSession:
         """Mark one session revoked without committing the enclosing transaction."""
         if token_session.revoked_at is None:

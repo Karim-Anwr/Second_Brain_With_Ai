@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.schemas.auth import AuthTokenResponse, LoginRequest, RegistrationRequest
+from app.schemas.auth import AuthTokenResponse, LoginRequest, RefreshTokenRequest, RegistrationRequest
 from app.services.auth_service import AuthService
 
 
@@ -23,3 +23,8 @@ def register(request: RegistrationRequest, session: Annotated[Session, Depends(g
 @router.post("/auth/login", response_model=AuthTokenResponse)
 def login(request: LoginRequest, session: Annotated[Session, Depends(get_db)]) -> AuthTokenResponse:
     return AuthService(session).login(request)
+
+
+@router.post("/auth/refresh", response_model=AuthTokenResponse)
+def refresh(request: RefreshTokenRequest, session: Annotated[Session, Depends(get_db)]) -> AuthTokenResponse:
+    return AuthService(session).refresh(request)

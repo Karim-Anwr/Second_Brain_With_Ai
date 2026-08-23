@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.db.email import canonicalize_email
 
@@ -39,6 +39,13 @@ class LoginRequest(BaseModel):
     @classmethod
     def normalize_email(cls, value: str) -> str:
         return canonicalize_email(value)
+
+
+class RefreshTokenRequest(BaseModel):
+    """Opaque refresh-token input with no client-controlled identity fields."""
+
+    model_config = ConfigDict(extra="forbid")
+    refresh_token: str = Field(min_length=1)
 
 
 class AuthTokenResponse(BaseModel):

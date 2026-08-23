@@ -13,7 +13,7 @@ from app.auth.tokens import create_access_token, generate_refresh_token, refresh
 from app.core.exceptions import AuthenticationFailedException, RegistrationFailedException
 from app.db.repositories.refresh_token_session import RefreshTokenSessionRepository
 from app.db.repositories.user import UserRepository
-from app.schemas.auth import AuthTokenResponse, LoginRequest, RegistrationRequest
+from app.schemas.auth import AuthTokenResponse, LoginRequest, RefreshTokenRequest, RegistrationRequest
 from app.schemas.user import UserCreate
 
 
@@ -67,11 +67,42 @@ class AuthService:
             self._session.rollback()
             raise
 
+    def refresh(self, request: RefreshTokenRequest) -> AuthTokenResponse:
+        """Rotate one active refresh session atomically using a PostgreSQL row lock."""
+        try:
+            try:
+                token_hash = hash_refresh_token(request.refresh_token)
+            except ValueError as exc:
+                raise AuthenticationFailedException() from exc
+
+            old_session = self._refresh_sessions.get_active_by_token_hash_for_update(token_hash)
+            if (
+                old_session is None
+                or old_session.revoked_at is not None
+                or old_session.expires_at <= datetime.now(timezone.utc)
+            ):
+                raise AuthenticationFailedException()
+            user = self._users.get_by_id(old_session.user_id)
+            if user is None or not user.is_active:
+                raise AuthenticationFailedException()
+
+            response, replacement_session = self._stage_token_pair(user.id)
+            self._refresh_sessions.revoke_and_replace(old_session, replacement_session)
+            self._session.commit()
+            return response
+        except Exception:
+            self._session.rollback()
+            raise
+
     def _issue_initial_tokens(self, user_id) -> AuthTokenResponse:
+        response, _ = self._stage_token_pair(user_id)
+        return response
+
+    def _stage_token_pair(self, user_id):
         access_token = create_access_token(user_id)
         raw_refresh_token = generate_refresh_token()
         expires_at = datetime.now(timezone.utc) + refresh_token_lifetime()
-        self._refresh_sessions.create(
+        token_session = self._refresh_sessions.create(
             user_id=user_id,
             token_hash=hash_refresh_token(raw_refresh_token),
             expires_at=expires_at,
@@ -82,4 +113,4 @@ class AuthService:
             refresh_token=raw_refresh_token,
             expires_at=access_token.expires_at,
             expires_in=expires_in,
-        )
+        ), token_session

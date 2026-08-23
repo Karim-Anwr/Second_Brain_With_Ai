@@ -189,6 +189,5 @@ def test_auth_routes_expose_only_register_and_login_with_safe_error_envelopes(mo
             assert register.json()["error"] == {"code": "registration_failed", "message": "Unable to create account."}
             assert login.json()["error"] == {"code": "authentication_failed", "message": "Invalid email or password."}
             assert client.get("/api/v1/auth/me").status_code == 404
-            assert client.post("/api/v1/auth/refresh").status_code == 404
     finally:
         app.dependency_overrides.clear()
