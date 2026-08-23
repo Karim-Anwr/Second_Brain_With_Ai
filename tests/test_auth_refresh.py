@@ -91,6 +91,20 @@ class FakeSession:
         self.rollback_count += 1
 
 
+class QueuedScalarSession(FakeSession):
+    """Fake PostgreSQL session that returns the explicitly locked C-3 lineage in order."""
+
+    def __init__(self, *, scalar_results, user: User | None = None, **kwargs):
+        super().__init__(old_session=None, user=user, **kwargs)
+        self._scalar_results = list(scalar_results)
+        self.scalar_statements = []
+
+    def scalar(self, statement):
+        self.scalar_statement = statement
+        self.scalar_statements.append(statement)
+        return self._scalar_results.pop(0) if self._scalar_results else None
+
+
 def _decode_access(value: str) -> dict:
     return jwt.decode(value, TEST_JWT_SECRET, algorithms=["HS256"])
 
@@ -117,6 +131,71 @@ def test_refresh_rotates_locked_active_session_atomically_and_persists_only_new_
     assert claims["sub"] == str(old_session.user_id)
     assert claims["type"] == "access"
     assert {"email", "password_hash", "refresh_token"}.isdisjoint(claims)
+
+
+def test_reused_rotated_token_invalidates_only_its_locked_replacement_lineage():
+    raw_reused = "reused-refresh-token"
+    reused_session = _old_session(raw_reused, revoked=True)
+    descendant = _old_session("descendant-refresh-token")
+    descendant.id = UUID("00000000-0000-0000-0000-000000000011")
+    reused_session.replaced_by_session_id = descendant.id
+    session = QueuedScalarSession(scalar_results=[reused_session, descendant])
+
+    with pytest.raises(AuthenticationFailedException) as exc_info:
+        AuthService(session).refresh(RefreshTokenRequest(refresh_token=raw_reused))
+
+    assert exc_info.value.code == "authentication_failed"
+    assert exc_info.value.message == "Invalid email or password."
+    assert descendant.revoked_at is not None
+    assert session.commit_count == 1
+    assert session.rollback_count == 0
+    assert session.added == []
+    assert all(statement._for_update_arg is not None for statement in session.scalar_statements)
+
+
+def test_compromised_lineage_descendant_is_rejected_but_unrelated_family_can_refresh():
+    raw_reused = "reused-refresh-token"
+    reused_session = _old_session(raw_reused, revoked=True)
+    descendant_raw = "compromised-descendant-token"
+    descendant = _old_session(descendant_raw)
+    descendant.id = UUID("00000000-0000-0000-0000-000000000011")
+    reused_session.replaced_by_session_id = descendant.id
+    compromise_session = QueuedScalarSession(scalar_results=[reused_session, descendant])
+
+    with pytest.raises(AuthenticationFailedException):
+        AuthService(compromise_session).refresh(RefreshTokenRequest(refresh_token=raw_reused))
+
+    rejected_descendant_session = FakeSession(old_session=descendant, user=_user())
+    with pytest.raises(AuthenticationFailedException):
+        AuthService(rejected_descendant_session).refresh(
+            RefreshTokenRequest(refresh_token=descendant_raw)
+        )
+    assert rejected_descendant_session.commit_count == 0
+
+    unrelated_raw = "unrelated-family-token"
+    unrelated_session = _old_session(unrelated_raw)
+    unrelated_result = AuthService(
+        FakeSession(old_session=unrelated_session, user=_user())
+    ).refresh(RefreshTokenRequest(refresh_token=unrelated_raw))
+    assert unrelated_result.refresh_token != unrelated_raw
+
+
+def test_reuse_lineage_persistence_failure_rolls_back_without_a_success_response():
+    raw_reused = "reused-refresh-token"
+    reused_session = _old_session(raw_reused, revoked=True)
+    descendant = _old_session("descendant-refresh-token")
+    descendant.id = UUID("00000000-0000-0000-0000-000000000011")
+    reused_session.replaced_by_session_id = descendant.id
+    session = QueuedScalarSession(
+        scalar_results=[reused_session, descendant],
+        fail_flush_at=1,
+    )
+
+    with pytest.raises(RuntimeError, match="persistence failure"):
+        AuthService(session).refresh(RefreshTokenRequest(refresh_token=raw_reused))
+
+    assert session.commit_count == 0
+    assert session.rollback_count == 1
 
 
 @pytest.mark.parametrize("state", ["missing", "revoked", "expired", "missing_user", "inactive_user"])

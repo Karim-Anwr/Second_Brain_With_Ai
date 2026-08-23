@@ -74,6 +74,49 @@ class RefreshTokenSessionRepository:
         )
         return self._session.scalar(statement)
 
+    def get_by_token_hash_for_update(self, token_hash: str) -> RefreshTokenSession | None:
+        """Lock any token-session state for an atomic refresh or reuse decision."""
+        if not is_refresh_token_hash(token_hash):
+            return None
+        statement = (
+            select(RefreshTokenSession)
+            .where(RefreshTokenSession.token_hash == token_hash)
+            .with_for_update()
+        )
+        return self._session.scalar(statement)
+
+    def get_replacement_lineage_for_update(
+        self, token_session: RefreshTokenSession
+    ) -> list[RefreshTokenSession]:
+        """Return a locked replacement chain rooted at ``token_session``.
+
+        The replacement column has a uniqueness constraint, so each session can
+        have at most one successor. The traversal guards corruption explicitly
+        rather than risking cross-user revocation or an infinite cycle.
+        """
+        lineage = [token_session]
+        visited_ids = {token_session.id}
+        replacement_session_id = token_session.replaced_by_session_id
+
+        while replacement_session_id is not None:
+            if replacement_session_id in visited_ids:
+                raise RuntimeError("refresh token replacement lineage contains a cycle")
+            statement = (
+                select(RefreshTokenSession)
+                .where(RefreshTokenSession.id == replacement_session_id)
+                .with_for_update()
+            )
+            replacement = self._session.scalar(statement)
+            if replacement is None:
+                raise RuntimeError("refresh token replacement lineage is incomplete")
+            if replacement.user_id != token_session.user_id:
+                raise RuntimeError("refresh token replacement lineage crosses users")
+            lineage.append(replacement)
+            visited_ids.add(replacement.id)
+            replacement_session_id = replacement.replaced_by_session_id
+
+        return lineage
+
     def revoke_and_replace(
         self,
         token_session: RefreshTokenSession,
@@ -91,3 +134,14 @@ class RefreshTokenSessionRepository:
             token_session.revoked_at = datetime.now(timezone.utc)
             self._session.flush()
         return token_session
+
+    def revoke_replacement_lineage(
+        self, lineage: list[RefreshTokenSession]
+    ) -> list[RefreshTokenSession]:
+        """Revoke an already-locked replacement lineage with one non-committing flush."""
+        revoked_at = datetime.now(timezone.utc)
+        for token_session in lineage:
+            if token_session.revoked_at is None:
+                token_session.revoked_at = revoked_at
+        self._session.flush()
+        return lineage

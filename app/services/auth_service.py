@@ -68,31 +68,43 @@ class AuthService:
             raise
 
     def refresh(self, request: RefreshTokenRequest) -> AuthTokenResponse:
-        """Rotate one active refresh session atomically using a PostgreSQL row lock."""
+        """Rotate an active session or invalidate its lineage when a rotated token is reused."""
+        reuse_detected = False
         try:
             try:
                 token_hash = hash_refresh_token(request.refresh_token)
             except ValueError as exc:
                 raise AuthenticationFailedException() from exc
 
-            old_session = self._refresh_sessions.get_active_by_token_hash_for_update(token_hash)
-            if (
-                old_session is None
-                or old_session.revoked_at is not None
-                or old_session.expires_at <= datetime.now(timezone.utc)
-            ):
+            old_session = self._refresh_sessions.get_by_token_hash_for_update(token_hash)
+            if old_session is None:
                 raise AuthenticationFailedException()
-            user = self._users.get_by_id(old_session.user_id)
-            if user is None or not user.is_active:
+            if old_session.revoked_at is not None:
+                if old_session.replaced_by_session_id is None:
+                    raise AuthenticationFailedException()
+                lineage = self._refresh_sessions.get_replacement_lineage_for_update(old_session)
+                self._refresh_sessions.revoke_replacement_lineage(lineage)
+                self._session.commit()
+                reuse_detected = True
+            elif old_session.expires_at <= datetime.now(timezone.utc):
                 raise AuthenticationFailedException()
 
-            response, replacement_session = self._stage_token_pair(user.id)
-            self._refresh_sessions.revoke_and_replace(old_session, replacement_session)
-            self._session.commit()
-            return response
+            if not reuse_detected:
+                user = self._users.get_by_id(old_session.user_id)
+                if user is None or not user.is_active:
+                    raise AuthenticationFailedException()
+
+                response, replacement_session = self._stage_token_pair(user.id)
+                self._refresh_sessions.revoke_and_replace(old_session, replacement_session)
+                self._session.commit()
+                return response
         except Exception:
             self._session.rollback()
             raise
+
+        # The lineage invalidation is durable before emitting the same generic
+        # client-safe authentication failure used for every invalid token state.
+        raise AuthenticationFailedException()
 
     def _issue_initial_tokens(self, user_id) -> AuthTokenResponse:
         response, _ = self._stage_token_pair(user_id)
