@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.exceptions import StorageCorruptionException, StorageException
+from app.core.legacy_paths import legacy_global_resource_path
 from app.db.models.owned_resource import OwnedResourceKind
 from app.services.ownership_service import OwnershipMismatchError, OwnershipResourceNotFoundError, OwnershipService
 
@@ -64,6 +65,7 @@ class GraphService:
                 if temporary_name and Path(temporary_name).exists():
                     Path(temporary_name).unlink(missing_ok=True)
 
+    @legacy_global_resource_path("graph")
     def add_edge(self, from_id: str, to_id: str, relation_type: str = "semantic", score: float = 0.5) -> bool:
         if from_id == to_id:
             return False
@@ -89,6 +91,7 @@ class GraphService:
             self._save_edges(edges)
             return True
 
+    @legacy_global_resource_path("graph")
     def remove_edge(self, from_id: str, to_id: str) -> bool:
         with self._lock:
             edges = self._load_edges()
@@ -101,6 +104,7 @@ class GraphService:
             self._save_edges(edges)
             return len(edges) < before
 
+    @legacy_global_resource_path("graph")
     def get_related(self, memory_id: str, depth: int = 1, min_score: float = 0.0) -> list[dict]:
         edges = self._load_edges()
         visited = {memory_id}
@@ -125,6 +129,7 @@ class GraphService:
                 break
         return sorted(results, key=lambda item: item["score"], reverse=True)
 
+    @legacy_global_resource_path("graph")
     def auto_link(self, memory_id: str, embedding: list[float], top_k: int = 3, similarity_threshold: float = 0.6) -> int:
         from app.services.storage_service import storage_service
 

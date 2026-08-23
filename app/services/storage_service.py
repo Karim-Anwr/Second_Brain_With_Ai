@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.exceptions import StorageException, DocumentNotFoundException
+from app.core.legacy_paths import legacy_global_resource_path
 from app.db.models.owned_resource import OwnedResourceKind
 from app.models.memory import Memory, MemorySearchResult
 from app.services.ownership_service import (
@@ -40,6 +41,7 @@ class StorageService:
     # Save Memory
     # ============================================================
 
+    @legacy_global_resource_path("memory")
     def save_memory(
         self,
         memory: Memory,
@@ -323,6 +325,7 @@ class StorageService:
     # Search
     # ============================================================
 
+    @legacy_global_resource_path("memory")
     def search(
         self,
         query_embedding: list[float],
@@ -385,6 +388,7 @@ class StorageService:
     # Raw chunks
     # ============================================================
 
+    @legacy_global_resource_path("memory")
     def search_raw_chunks(
         self,
         query_embedding: list[float],
@@ -515,6 +519,7 @@ class StorageService:
     # Helpers
     # ============================================================
 
+    @legacy_global_resource_path("memory")
     def increment_access_count(self, memory_id: str):
         try:
             results = self.collection.get(
@@ -536,6 +541,7 @@ class StorageService:
         except Exception:
             pass
 
+    @legacy_global_resource_path("memory")
     def get_total_memories(self) -> int:
         try:
             return self.collection.count()
@@ -552,6 +558,7 @@ class StorageService:
 # ============================================================
 
 
+    @legacy_global_resource_path("memory")
     def set_favorite(self, memory_id: str, is_favorite: bool) -> bool:
         """
         بيعلّم كل chunks الذكرى كـ favorite أو يشيلها.
@@ -575,6 +582,7 @@ class StorageService:
         except Exception as e:
             raise StorageException(f"فشل تحديث الـ favorite: {e}")
 
+    @legacy_global_resource_path("memory")
     def memory_exists(self, memory_id: str) -> bool:
         """Check that at least one stored chunk belongs to a memory identifier."""
         try:

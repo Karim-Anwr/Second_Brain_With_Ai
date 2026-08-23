@@ -1,5 +1,6 @@
 from app.models.conversation import ChatMessage, ExtractedMemory, MessageRole
 from app.services.conversation_service import conversation_service
+from app.core.legacy_paths import legacy_global_resource_path
 from app.utils.arabic_normalizer import arabic_normalizer
 from sqlalchemy.orm import Session
 from uuid import UUID
@@ -38,6 +39,7 @@ class ContextBuilder:
     4. Query       ← سؤال المستخدم الحالي
     """
 
+    @legacy_global_resource_path("conversation")
     def build(
         self,
         session_id: str,

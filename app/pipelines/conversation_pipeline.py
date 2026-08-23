@@ -9,6 +9,7 @@ from app.services.session_service import session_service
 from app.services.conversation_service import conversation_service
 from app.services.llm_service import llm_service
 from app.core.exceptions import StorageCorruptionException, StorageException
+from app.core.legacy_paths import legacy_global_resource_path
 from app.pipelines.context_builder import context_builder
 from app.utils.arabic_normalizer import arabic_normalizer
 
@@ -60,6 +61,7 @@ class ConversationPipeline:
     7. رجّع الرد
     """
 
+    @legacy_global_resource_path("conversation")
     def chat(self, request: ChatRequest) -> ChatResponse:
         """
         النقطة الرئيسية — بتاخد request وبترجع response.

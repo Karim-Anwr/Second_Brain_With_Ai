@@ -1,6 +1,7 @@
 from app.services.embedding_service import embedding_service
 from app.services.storage_service import storage_service
 from app.services.llm_service import llm_service
+from app.core.legacy_paths import legacy_global_resource_path
 from app.utils.arabic_normalizer import arabic_normalizer
 from app.models.memory import MemorySearchResult
 from sqlalchemy.orm import Session
@@ -94,6 +95,7 @@ class SearchPipeline:
         )
         return {"query": str(filters), "total": len(chunks), "results": self._build_final_results(chunks, top_k), "llm_answer": None}
 
+    @legacy_global_resource_path("search")
     def retrieve(
     self,
     query: str,
@@ -158,6 +160,7 @@ class SearchPipeline:
             "intent":  intent,
         }
 
+    @legacy_global_resource_path("search")
     def search(
     self,
     query: str,
@@ -308,6 +311,7 @@ class SearchPipeline:
     # Filter search
     # ============================================================
 
+    @legacy_global_resource_path("search")
     def search_by_filter(self, category=None, is_favorite=None, file_type=None, top_k=10):
 
         filters = {}

@@ -20,6 +20,7 @@ import uuid
 from app.services.link_service import link_service
 from app.services.audio_service import audio_service
 from app.core.exceptions import InvalidRequestException, SecondBrainException, UnsafeURLError
+from app.core.legacy_paths import legacy_global_resource_path
 from app.services.graph_service import graph_service
 from app.utils.file_handler import save_upload_file_owned
 
@@ -218,6 +219,7 @@ class IngestPipeline:
             status="success",
         )
 
+    @legacy_global_resource_path("ingestion")
     def process(self, file_path, file_name, file_type, file_size=0):
 
         print(f"\n بدأ معالجة: {file_name}")
@@ -238,6 +240,7 @@ class IngestPipeline:
             is_image=file_type == "image",
         )
 
+    @legacy_global_resource_path("ingestion")
     def process_text(self, text: str, title: str) -> MemoryResponse:
         """Ingest direct user text through the existing shared content pipeline."""
         return self._process_content(
@@ -249,6 +252,7 @@ class IngestPipeline:
             is_image=False,
         )
 
+    @legacy_global_resource_path("ingestion")
     def process_link(self, url: str) -> MemoryResponse:
         """
         بياخد لينك ويحفظه كـ memory.
@@ -284,6 +288,7 @@ class IngestPipeline:
             is_image=bool(thumbnail_path),
         )
 
+    @legacy_global_resource_path("ingestion")
     def _process_content(
         self,
         text,

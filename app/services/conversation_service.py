@@ -7,6 +7,7 @@ from app.services.embedding_service import embedding_service
 from app.services.storage_service import storage_service
 from app.models.memory import Memory, FileType, Category, Language
 from app.utils.arabic_normalizer import arabic_normalizer
+from app.core.legacy_paths import legacy_global_resource_path
 from datetime import datetime
 from uuid import UUID
 from sqlalchemy.orm import Session
@@ -114,6 +115,7 @@ class ConversationService:
     # Short-Term Memory
     # ============================================================
 
+    @legacy_global_resource_path("conversation")
     def get_short_term_memory(
         self,
         session_id: str,
@@ -132,6 +134,7 @@ class ConversationService:
     # Long-Term Memory
     # ============================================================
 
+    @legacy_global_resource_path("conversation")
     def get_long_term_memory(
     self,
     query: str,
@@ -162,6 +165,7 @@ class ConversationService:
     # ============================================================
     # save_as_memory
     # ============================================================
+    @legacy_global_resource_path("conversation")
     def save_as_memory(
     self,
     session_id: str,
@@ -182,6 +186,7 @@ class ConversationService:
     # Save Conversation Memory
     # ============================================================
 
+    @legacy_global_resource_path("conversation")
     def save_conversation_memory(
         self,
         session_id: str,
@@ -232,6 +237,7 @@ class ConversationService:
     # Process & Extract
     # ============================================================
 
+    @legacy_global_resource_path("conversation")
     def process_and_extract(
         self,
         session_id: str,
@@ -291,6 +297,7 @@ class ConversationService:
     # Episodic Memory
     # ============================================================
 
+    @legacy_global_resource_path("conversation")
     def get_episodic_memory(
         self,
         session_id: str,
@@ -305,6 +312,7 @@ class ConversationService:
     # Session Summarization
     # ============================================================
 
+    @legacy_global_resource_path("conversation")
     def summarize_session(
         self,
         session_id: str,

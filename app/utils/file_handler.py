@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.db.models.owned_resource import OwnedResourceKind
 from app.core.exceptions import UnsupportedFileTypeException, UploadTooLargeException
+from app.core.legacy_paths import legacy_global_resource_path
 from app.services.ownership_service import OwnershipService
 
 
@@ -35,6 +36,7 @@ def _validate_signature(header: bytes, file_type: str) -> None:
         raise UnsupportedFileTypeException("The uploaded file content does not match its declared type.")
 
 
+@legacy_global_resource_path("file")
 async def save_upload_file(upload_file: UploadFile) -> tuple[str, str, str]:
     """Persist a verified, size-bounded file atomically and return its metadata."""
     content_type = upload_file.content_type
@@ -66,6 +68,7 @@ async def save_upload_file(upload_file: UploadFile) -> tuple[str, str, str]:
         raise
 
 
+@legacy_global_resource_path("file")
 def remove_upload_file(file_path: str | Path) -> None:
     """Remove a Phase 1 upload only when it remains under the configured upload root."""
     target = Path(file_path).resolve()

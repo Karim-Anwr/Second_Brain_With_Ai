@@ -12,6 +12,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.legacy_paths import legacy_global_resource_path
 from app.db.models.owned_resource import OwnedResourceKind
 from app.core.exceptions import (
     InvalidRequestException,
@@ -92,6 +93,7 @@ class SessionService:
         except OSError as exc:
             raise StorageException("Unable to read session data.") from exc
 
+    @legacy_global_resource_path("session")
     def create_session(self) -> ChatSession:
         session = ChatSession()
         self._save_session(session)
@@ -108,6 +110,7 @@ class SessionService:
         self._atomic_write_json(self._owned_session_path(owner_user_id, session.id), session.model_dump(mode="json"))
         return session
 
+    @legacy_global_resource_path("session")
     def get_session(self, session_id: str) -> ChatSession:
         path = self._session_path(session_id)
         if not path.exists():
@@ -138,6 +141,7 @@ class SessionService:
         with self._lock:
             self._atomic_write_json(self._session_path(session.id), session.model_dump(mode="json"))
 
+    @legacy_global_resource_path("session")
     def list_sessions(self) -> list[dict]:
         sessions: list[dict] = []
         paths: list[tuple[float, Path]] = []
@@ -169,6 +173,7 @@ class SessionService:
                 break
         return sessions
 
+    @legacy_global_resource_path("session")
     def delete_session(self, session_id: str) -> bool:
         session_path = self._session_path(session_id)
         memories_path = self._memories_path(session_id)
@@ -256,6 +261,7 @@ class SessionService:
             raise StorageCorruptionException("Extracted-memory data")
         return [ExtractedMemory(**memory) for memory in data]
 
+    @legacy_global_resource_path("session")
     def add_message(
         self,
         session_id: str,
@@ -274,15 +280,18 @@ class SessionService:
             self._save_session(session)
             return message
 
+    @legacy_global_resource_path("session")
     def get_recent_messages(self, session_id: str, last_n: int = 10) -> list[ChatMessage]:
         return self.get_session(session_id).messages[-last_n:]
 
+    @legacy_global_resource_path("session")
     def update_session_summary(self, session_id: str, summary: str) -> None:
         with self._lock:
             session = self.get_session(session_id)
             session.summary = summary
             self._save_session(session)
 
+    @legacy_global_resource_path("session")
     def save_extracted_memory(self, session_id: str, memory: ExtractedMemory) -> None:
         path = self._memories_path(session_id)
         with self._lock:
@@ -301,6 +310,7 @@ class SessionService:
             memories.append(memory.model_dump(mode="json"))
             self._atomic_write_json(path, memories)
 
+    @legacy_global_resource_path("session")
     def get_extracted_memories(self, session_id: str) -> list[ExtractedMemory]:
         path = self._memories_path(session_id)
         if not path.exists():
