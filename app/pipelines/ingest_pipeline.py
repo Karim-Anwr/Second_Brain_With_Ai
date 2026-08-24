@@ -36,6 +36,7 @@ class IngestPipeline:
             file_name=title,
             file_type=FileType.TEXT.value,
             file_path="",
+            file_id="",
             file_size=len(text.encode("utf-8")),
         )
 
@@ -46,6 +47,7 @@ class IngestPipeline:
         file_path: str,
         file_name: str,
         file_type: str,
+        file_id: str = "",
         file_size: int = 0,
     ) -> MemoryResponse:
         """Create a new owner-scoped file-derived memory from an explicit owner path."""
@@ -60,13 +62,14 @@ class IngestPipeline:
             file_name=file_name,
             file_type=file_type,
             file_path=file_path,
+            file_id=file_id,
             file_size=file_size,
         )
 
     async def process_link_owned(self, db: Session, owner_user_id: UUID, url: str) -> MemoryResponse:
         """Ingest a link through explicit owner-scoped memory, file, and graph primitives only."""
         metadata, combined_text = self._build_link_content(url)
-        thumbnail_path = await self._save_link_thumbnail_owned(
+        thumbnail = await self._save_link_thumbnail_owned(
             db=db,
             owner_user_id=owner_user_id,
             thumbnail_url=metadata.get("thumbnail_url", ""),
@@ -79,7 +82,8 @@ class IngestPipeline:
             text=combined_text,
             file_name=file_name,
             file_type=FileType.LINK.value,
-            file_path=thumbnail_path or "",
+            file_path=thumbnail[1] if thumbnail else "",
+            file_id=thumbnail[0] if thumbnail else "",
             file_size=len(combined_text),
         )
 
@@ -111,7 +115,7 @@ class IngestPipeline:
 
     async def _save_link_thumbnail_owned(
         self, *, db: Session, owner_user_id: UUID, thumbnail_url: str
-    ) -> str | None:
+    ) -> tuple[str, str] | None:
         """Download a safe optional thumbnail and persist it only through the owned file primitive."""
         if not thumbnail_url:
             return None
@@ -136,8 +140,8 @@ class IngestPipeline:
                 headers=Headers({"content-type": content_type}),
             )
             try:
-                _, thumbnail_path, _ = await save_upload_file_owned(db, owner_user_id, upload)
-                return thumbnail_path
+                thumbnail_id, thumbnail_path, _ = await save_upload_file_owned(db, owner_user_id, upload)
+                return thumbnail_id, thumbnail_path
             finally:
                 await upload.close()
         finally:
@@ -162,6 +166,7 @@ class IngestPipeline:
         file_name: str,
         file_type: str,
         file_path: str,
+        file_id: str,
         file_size: int,
     ) -> MemoryResponse:
         """Minimal explicit-owner path: build, register/project memory, then owner-scope graph linking."""
@@ -172,6 +177,7 @@ class IngestPipeline:
             file_name=file_name,
             file_type=self._to_file_type(file_type),
             file_path=file_path,
+            file_id=file_id,
             file_size=file_size,
             file_hash=self._calculate_hash(file_path) if file_path else "",
             raw_text=text,

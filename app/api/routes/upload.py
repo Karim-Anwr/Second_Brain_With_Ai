@@ -14,6 +14,7 @@ from app.utils.file_handler import (
     save_upload_file_owned,
 )
 from app.models.memory import MemoryResponse
+from app.models.api import error_responses
 from app.services.link_service import link_service
 
 
@@ -31,7 +32,7 @@ class LinkUploadRequest(BaseModel):
     url: str = Field(..., min_length=5, max_length=2_048)
 
 
-@router.post("/upload/link", response_model=MemoryResponse)
+@router.post("/upload/link", response_model=MemoryResponse, responses=error_responses(400, 401, 422, 500, 503))
 async def upload_link(
     request: LinkUploadRequest,
     current_user: Annotated[CurrentUser, Depends(get_current_user)],
@@ -46,7 +47,7 @@ async def upload_link(
     return result
 
 
-@router.post("/upload", response_model=MemoryResponse)
+@router.post("/upload", response_model=MemoryResponse, responses=error_responses(401, 413, 415, 422, 500, 503))
 async def upload_file(
     current_user: Annotated[CurrentUser, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
@@ -58,7 +59,7 @@ async def upload_file(
     """
 
     get_file_type(file.content_type)
-    _, file_path, file_type = await save_upload_file_owned(db, current_user.id, file)
+    file_id, file_path, file_type = await save_upload_file_owned(db, current_user.id, file)
 
     try:
         result = ingest_pipeline.process_owned(
@@ -67,6 +68,7 @@ async def upload_file(
             file_path=file_path,
             file_name=file.filename or "upload",
             file_type=file_type,
+            file_id=file_id,
             file_size=file.size or 0,
         )
         db.commit()
@@ -77,7 +79,7 @@ async def upload_file(
         raise
 
 
-@router.post("/upload/text", response_model=MemoryResponse)
+@router.post("/upload/text", response_model=MemoryResponse, responses=error_responses(401, 422, 500, 503))
 async def upload_text(
     request: TextUploadRequest,
     current_user: Annotated[CurrentUser, Depends(get_current_user)],

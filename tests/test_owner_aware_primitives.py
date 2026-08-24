@@ -411,7 +411,7 @@ def test_owned_link_thumbnail_uses_owned_file_primitive_and_failure_stops_memory
             db=object(), owner_user_id=OWNER_A, thumbnail_url="https://example.test/image.jpg"
         )
     )
-    assert thumbnail.endswith("file_a.jpg")
+    assert thumbnail == ("file_a", str(tmp_path / "owners" / str(OWNER_A) / "file_a.jpg"))
     assert observed[0][1:] == (OWNER_A, b"\xff\xd8\xffthumbnail")
 
     async def failing_owned_file(*_args):

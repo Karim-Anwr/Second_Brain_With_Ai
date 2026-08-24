@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 
 from app.api.routes import auth, chat, search, upload
@@ -55,6 +56,37 @@ app = FastAPI(
     description="AI-powered Personal Memory Assistant",
     lifespan=lifespan,
 )
+
+
+def custom_openapi() -> dict:
+    """Document only validation responses that a Phase A operation can actually emit."""
+    if app.openapi_schema:
+        return app.openapi_schema
+    schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        openapi_version=app.openapi_version,
+        summary=app.summary,
+        description=app.description,
+        terms_of_service=app.terms_of_service,
+        contact=app.contact,
+        license_info=app.license_info,
+        routes=app.routes,
+        webhooks=app.webhooks.routes,
+        tags=app.openapi_tags,
+        servers=app.servers,
+        separate_input_output_schemas=app.separate_input_output_schemas,
+    )
+    for path, method in (
+        ("/api/v1/memories/{memory_id}/file", "get"),
+        ("/api/v1/sessions/{session_id}", "delete"),
+    ):
+        schema.get("paths", {}).get(path, {}).get(method, {}).get("responses", {}).pop("422", None)
+    app.openapi_schema = schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi
 
 app.add_middleware(
     CORSMiddleware,

@@ -12,6 +12,17 @@ class ErrorResponse(BaseModel):
     error: ErrorDetail
 
 
+def error_responses(*status_codes: int) -> dict[int, dict]:
+    """OpenAPI-only documentation for the existing safe public error envelope."""
+    return {
+        status_code: {
+            "model": ErrorResponse,
+            "description": "A safe machine-readable application error response.",
+        }
+        for status_code in status_codes
+    }
+
+
 class SearchScores(BaseModel):
     final: float
     semantic: float
@@ -22,7 +33,6 @@ class SearchScores(BaseModel):
 class SearchResultResponse(BaseModel):
     memory_id: str
     file_name: str
-    file_path: str
     summary: str
     matched_text: str
     tags: list[str]
@@ -52,6 +62,8 @@ class RelatedMemoryResponse(BaseModel):
 class RelatedMemoriesResponse(BaseModel):
     memory_id: str
     total: int
+    page: int
+    page_size: int
     related: list[RelatedMemoryResponse]
 
 
@@ -69,6 +81,8 @@ class SessionListItem(BaseModel):
 
 class SessionListResponse(BaseModel):
     total: int
+    limit: int
+    next_cursor: str | None = None
     sessions: list[SessionListItem]
 
 
@@ -85,6 +99,8 @@ class SessionDetailResponse(BaseModel):
     total_messages: int
     summary: str
     created_at: str
+    limit: int
+    next_cursor: str | None = None
     messages: list[SessionMessageResponse]
 
 
@@ -105,4 +121,6 @@ class SessionMemoryResponse(BaseModel):
 class SessionMemoriesResponse(BaseModel):
     session_id: str
     total: int
+    limit: int
+    next_cursor: str | None = None
     memories: list[SessionMemoryResponse]

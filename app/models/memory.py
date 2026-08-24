@@ -55,6 +55,7 @@ class Memory(BaseModel):
     file_name:  str      = Field(description="اسم الملف")
     file_type:  FileType = Field(description="نوع الملف")
     file_path:  str      = Field(description="مسار الملف")
+    file_id:    str      = Field(default="")
     file_size:  int      = Field(default=0)
     file_hash:  str      = Field(default="")
 
@@ -146,7 +147,6 @@ class MemoryResponse(BaseModel):
 class MemorySearchResult(BaseModel):
     memory_id:        str
     file_name:        str
-    file_path:        str
     summary:          str
     matched_text:     str
     tags:             list[str]

@@ -215,7 +215,7 @@ class SessionService:
                     "updated_at": session.updated_at,
                 }
             )
-        return sessions[:20]
+        return sessions
 
     def add_message_owned(
         self,

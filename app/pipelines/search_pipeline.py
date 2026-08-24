@@ -282,7 +282,6 @@ class SearchPipeline:
         return MemorySearchResult(
             memory_id=meta.get("memory_id", ""),
             file_name=meta.get("file_name", ""),
-            file_path=meta.get("file_path", ""),
             summary=meta.get("summary", ""),
             matched_text=meta.get("chunk_text", ""),
 

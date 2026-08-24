@@ -176,6 +176,7 @@ class StorageService:
                     "file_name": memory.file_name,
                     "file_type": memory.file_type.value,
                     "file_path": memory.file_path,
+                    "file_id": memory.file_id,
                     "created_at": memory.created_at,
                     "chunk_text": chunk,
                     "summary": memory.summary[:500],
@@ -473,7 +474,6 @@ class StorageService:
         return MemorySearchResult(
             memory_id=meta["memory_id"],
             file_name=meta["file_name"],
-            file_path=meta.get("file_path", ""),
             summary=meta.get("summary", ""),
             matched_text=meta.get("chunk_text", doc),
             tags=meta.get("tags", "").split(",") if meta.get("tags") else [],
