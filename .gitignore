@@ -218,3 +218,7 @@ __marimo__/
 # Local runtime state. Existing tracked data is intentionally retained for manual cleanup.
 storage/
 YOUR_PATH/
+
+# Flutter mobile source
+!mobile/lib/
+!mobile/lib/**
