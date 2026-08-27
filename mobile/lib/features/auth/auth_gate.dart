@@ -5,11 +5,17 @@ import 'auth_state.dart';
 import 'authenticated_home_screen.dart';
 import 'login_screen.dart';
 import 'register_screen.dart';
+import '../search/search_controller.dart';
 
 class AuthGate extends StatefulWidget {
-  const AuthGate({super.key, required this.controller});
+  const AuthGate({
+    super.key,
+    required this.controller,
+    required this.searchController,
+  });
 
   final AuthController controller;
+  final SearchController searchController;
 
   @override
   State<AuthGate> createState() => _AuthGateState();
@@ -28,7 +34,10 @@ class _AuthGateState extends State<AuthGate> {
           return const _LoadingScreen(message: 'Restoring your session…');
         }
         if (state.isAuthenticated) {
-          return AuthenticatedHomeScreen(controller: widget.controller);
+          return AuthenticatedHomeScreen(
+            controller: widget.controller,
+            searchController: widget.searchController,
+          );
         }
 
         final showRegister = _showRegister;

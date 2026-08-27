@@ -13,10 +13,10 @@ class SearchScores {
 
   factory SearchScores.fromJson(Map<String, dynamic> json) {
     return SearchScores(
-      finalScore: (json['final'] as num).toDouble(),
-      semantic: (json['semantic'] as num).toDouble(),
-      recency: (json['recency'] as num).toDouble(),
-      importance: (json['importance'] as num).toDouble(),
+      finalScore: _requiredNumber(json, 'final'),
+      semantic: _requiredNumber(json, 'semantic'),
+      recency: _requiredNumber(json, 'recency'),
+      importance: _requiredNumber(json, 'importance'),
     );
   }
 }
@@ -42,15 +42,13 @@ class SearchResult {
 
   factory SearchResult.fromJson(Map<String, dynamic> json) {
     return SearchResult(
-      memoryId: json['memory_id'] as String,
-      fileName: json['file_name'] as String,
-      summary: json['summary'] as String,
-      matchedText: json['matched_text'] as String,
-      tags: List<String>.from(json['tags'] as List),
-      createdAt: json['created_at'] as String,
-      scores: SearchScores.fromJson(
-        Map<String, dynamic>.from(json['scores'] as Map),
-      ),
+      memoryId: _requiredString(json, 'memory_id'),
+      fileName: _requiredString(json, 'file_name'),
+      summary: _requiredString(json, 'summary'),
+      matchedText: _requiredString(json, 'matched_text'),
+      tags: _requiredStringList(json, 'tags'),
+      createdAt: _requiredString(json, 'created_at'),
+      scores: SearchScores.fromJson(_requiredMap(json, 'scores')),
     );
   }
 }
@@ -69,17 +67,67 @@ class SearchResponse {
   final String? llmAnswer;
 
   factory SearchResponse.fromJson(Map<String, dynamic> json) {
+    final rawAnswer = json['llm_answer'];
+    if (rawAnswer != null && rawAnswer is! String) {
+      throw const FormatException('The search response has an invalid llm_answer.');
+    }
+    final rawResults = json['results'];
+    if (rawResults is! List) {
+      throw const FormatException('The search response has invalid results.');
+    }
+
     return SearchResponse(
-      query: json['query'] as String,
-      total: json['total'] as int,
-      results: (json['results'] as List)
-          .map(
-            (item) => SearchResult.fromJson(
-              Map<String, dynamic>.from(item as Map),
-            ),
-          )
-          .toList(),
-      llmAnswer: json['llm_answer'] as String?,
+      query: _requiredString(json, 'query'),
+      total: _requiredInt(json, 'total'),
+      results: rawResults
+          .map((item) {
+            if (item is! Map) {
+              throw const FormatException('The search response has an invalid result.');
+            }
+            return SearchResult.fromJson(Map<String, dynamic>.from(item));
+          })
+          .toList(growable: false),
+      llmAnswer: rawAnswer,
     );
   }
+}
+
+String _requiredString(Map<String, dynamic> json, String key) {
+  final value = json[key];
+  if (value is! String) {
+    throw FormatException('The search response has an invalid $key.');
+  }
+  return value;
+}
+
+int _requiredInt(Map<String, dynamic> json, String key) {
+  final value = json[key];
+  if (value is! int) {
+    throw FormatException('The search response has an invalid $key.');
+  }
+  return value;
+}
+
+double _requiredNumber(Map<String, dynamic> json, String key) {
+  final value = json[key];
+  if (value is! num) {
+    throw FormatException('The search response has an invalid $key.');
+  }
+  return value.toDouble();
+}
+
+Map<String, dynamic> _requiredMap(Map<String, dynamic> json, String key) {
+  final value = json[key];
+  if (value is! Map) {
+    throw FormatException('The search response has an invalid $key.');
+  }
+  return Map<String, dynamic>.from(value);
+}
+
+List<String> _requiredStringList(Map<String, dynamic> json, String key) {
+  final value = json[key];
+  if (value is! List || value.any((item) => item is! String)) {
+    throw FormatException('The search response has an invalid $key.');
+  }
+  return List<String>.unmodifiable(value);
 }

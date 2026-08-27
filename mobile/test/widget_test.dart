@@ -1,8 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/app.dart';
 import 'package:mobile/features/auth/auth_controller.dart';
+import 'package:mobile/features/search/search_controller.dart';
 import 'package:mobile/models/auth_tokens.dart';
+import 'package:mobile/models/search_response.dart';
 import 'package:mobile/repositories/auth_repository.dart';
+import 'package:mobile/repositories/search_repository.dart';
 
 void main() {
   testWidgets('renders login when no session is stored', (WidgetTester tester) async {
@@ -11,6 +14,7 @@ void main() {
         controller: AuthController(
           repository: _FakeAuthRepository(),
         ),
+        searchController: SearchController(repository: _FakeSearchRepository()),
       ),
     );
     await tester.pumpAndSettle();
@@ -26,6 +30,7 @@ void main() {
         controller: AuthController(
           repository: _FakeAuthRepository(),
         ),
+        searchController: SearchController(repository: _FakeSearchRepository()),
       ),
     );
     await tester.pumpAndSettle();
@@ -46,6 +51,7 @@ void main() {
         controller: AuthController(
           repository: _FakeAuthRepository(),
         ),
+        searchController: SearchController(repository: _FakeSearchRepository()),
       ),
     );
     await tester.pumpAndSettle();
@@ -59,9 +65,46 @@ void main() {
     expect(find.text('Welcome back'), findsOneWidget);
     expect(find.text('Login'), findsOneWidget);
   });
+
+  testWidgets('renders Search only after an authenticated session is restored', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      SecondBrainApp(
+        controller: AuthController(
+          repository: _FakeAuthRepository(hasSession: true),
+        ),
+        searchController: SearchController(repository: _FakeSearchRepository()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Search your memory'), findsOneWidget);
+    expect(find.text('Welcome back'), findsNothing);
+  });
+
+  testWidgets('logout returns the authenticated Search route to login', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      SecondBrainApp(
+        controller: AuthController(
+          repository: _FakeAuthRepository(hasSession: true),
+        ),
+        searchController: SearchController(repository: _FakeSearchRepository()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Logout'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Welcome back'), findsOneWidget);
+    expect(find.text('Search your memory'), findsNothing);
+  });
 }
 
 class _FakeAuthRepository implements AuthenticationRepository {
+  _FakeAuthRepository({this.hasSession = false});
+
+  final bool hasSession;
+
   @override
   Future<AuthTokens> login({
     required String email,
@@ -90,5 +133,17 @@ class _FakeAuthRepository implements AuthenticationRepository {
   }
 
   @override
-  Future<bool> restoreSession() async => false;
+  Future<bool> restoreSession() async => hasSession;
+}
+
+class _FakeSearchRepository implements SearchRepository {
+  @override
+  Future<SearchResponse> search({
+    required String query,
+    int topK = 5,
+    String? category,
+    bool? isFavorite,
+  }) {
+    throw UnimplementedError();
+  }
 }
