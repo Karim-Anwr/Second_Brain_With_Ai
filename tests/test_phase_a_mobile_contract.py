@@ -68,7 +68,7 @@ def auth_header(owner_id: UUID = OWNER_A) -> dict[str, str]:
 def test_memory_file_delivery_requires_bearer(client):
     response = client.get("/api/v1/memories/mem_a/file")
     assert response.status_code == 401
-    assert response.json()["error"]["code"] == "authentication_failed"
+    assert response.json()["error"]["code"] == "authentication_required"
 
 
 def test_memory_file_delivery_is_owner_scoped_and_safe(client, monkeypatch, tmp_path):

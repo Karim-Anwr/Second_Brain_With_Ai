@@ -37,7 +37,7 @@ class AuthRepository implements AuthenticationRepository {
     String? displayName,
   }) {
     return _authenticate(
-      'auth/register',
+      '/auth/register',
       <String, dynamic>{
         'email': email,
         'password': password,
@@ -52,7 +52,7 @@ class AuthRepository implements AuthenticationRepository {
     required String password,
   }) {
     return _authenticate(
-      'auth/login',
+      '/auth/login',
       <String, dynamic>{
         'email': email,
         'password': password,
@@ -64,7 +64,7 @@ class AuthRepository implements AuthenticationRepository {
   Future<AuthTokens> refresh({required String refreshToken}) async {
     try {
       return await _authenticate(
-        'auth/refresh',
+        '/auth/refresh',
         <String, dynamic>{'refresh_token': refreshToken},
       );
     } catch (error, stackTrace) {

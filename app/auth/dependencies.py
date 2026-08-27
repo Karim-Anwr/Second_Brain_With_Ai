@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.current_user import CurrentUser
 from app.auth.tokens import AccessTokenVerificationError, verify_access_token
-from app.core.exceptions import AuthenticationFailedException
+from app.core.exceptions import AuthenticationRequiredException
 from app.db.repositories.user import UserRepository
 from app.db.session import get_db
 
@@ -24,13 +24,13 @@ def get_current_user(
 ) -> CurrentUser:
     """Return the active User identity for a verified bearer access token only."""
     if credentials is None or credentials.scheme.lower() != "bearer" or not credentials.credentials:
-        raise AuthenticationFailedException()
+        raise AuthenticationRequiredException()
     try:
         user_id = verify_access_token(credentials.credentials)
     except AccessTokenVerificationError as exc:
-        raise AuthenticationFailedException() from exc
+        raise AuthenticationRequiredException() from exc
 
     user = UserRepository(session).get_by_id(user_id)
     if user is None or not user.is_active:
-        raise AuthenticationFailedException()
+        raise AuthenticationRequiredException()
     return CurrentUser(id=user.id)

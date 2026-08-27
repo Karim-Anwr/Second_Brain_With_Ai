@@ -43,6 +43,7 @@ class ApiException implements Exception {
           code: 'request_cancelled',
           message: 'The request was cancelled.',
         );
+      case DioExceptionType.transformTimeout:
       case DioExceptionType.badResponse:
       case DioExceptionType.unknown:
         return ApiException(

@@ -14,7 +14,7 @@ from app.auth.current_user import CurrentUser
 from app.auth.dependencies import get_current_user
 from app.auth.tokens import AccessTokenVerificationError, create_access_token, verify_access_token
 from app.core.config import settings
-from app.core.exceptions import AuthenticationFailedException
+from app.core.exceptions import AuthenticationRequiredException
 from app.db.models.user import User
 from app.db.session import get_db
 
@@ -67,7 +67,7 @@ def _access_claims(user_id: UUID, **overrides) -> dict:
 def _dependency_app(session: FakeSession) -> FastAPI:
     test_app = FastAPI()
 
-    @test_app.exception_handler(AuthenticationFailedException)
+    @test_app.exception_handler(AuthenticationRequiredException)
     async def auth_failure_handler(_request, exc):
         return __import__("fastapi").responses.JSONResponse(
             status_code=exc.status_code,
@@ -131,7 +131,7 @@ def test_current_user_dependency_rejects_missing_wrong_and_malformed_authorizati
     with TestClient(app) as client:
         response = client.get("/probe", headers=headers)
     assert response.status_code == 401
-    assert response.json() == {"error": {"code": "authentication_failed", "message": "Invalid email or password."}}
+    assert response.json() == {"error": {"code": "authentication_required", "message": "Authentication is required."}}
 
 
 @pytest.mark.parametrize("user", [None, _user(is_active=False)])
@@ -141,7 +141,7 @@ def test_current_user_dependency_rejects_missing_and_inactive_users_with_generic
     with TestClient(app) as client:
         response = client.get("/probe", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 401
-    assert response.json()["error"] == {"code": "authentication_failed", "message": "Invalid email or password."}
+    assert response.json()["error"] == {"code": "authentication_required", "message": "Authentication is required."}
 
 
 def test_client_supplied_query_user_id_cannot_override_verified_token_subject():

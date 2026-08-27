@@ -24,8 +24,22 @@ class AuthenticationFailedException(AppError):
     """Generic login failure that does not reveal account state."""
 
     def __init__(self):
-        super().__init__("authentication_failed", "Invalid email or password.", 401)
+        super().__init__(
+            "authentication_failed",
+            "Invalid email or password.",
+            401,
+        )
 
+
+class AuthenticationRequiredException(AppError):
+    """Safe authentication error for protected resources."""
+
+    def __init__(self):
+        super().__init__(
+            "authentication_required",
+            "Authentication is required.",
+            401,
+        )
 
 class RegistrationFailedException(AppError):
     """Client-safe registration conflict without exposing database details."""

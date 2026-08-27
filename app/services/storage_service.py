@@ -597,11 +597,20 @@ class StorageService:
 _storage_service = None
 
 
-def get_storage_service():
+def get_storage_service() -> StorageService:
     global _storage_service
+
     if _storage_service is None:
         _storage_service = StorageService()
+
     return _storage_service
 
 
-storage_service = get_storage_service()
+class _LazyStorageService:
+    """Lazy proxy that defers Chroma initialization until first real use."""
+
+    def __getattr__(self, name):
+        return getattr(get_storage_service(), name)
+
+
+storage_service = _LazyStorageService()

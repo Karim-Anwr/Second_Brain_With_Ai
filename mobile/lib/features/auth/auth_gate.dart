@@ -31,8 +31,7 @@ class _AuthGateState extends State<AuthGate> {
           return AuthenticatedHomeScreen(controller: widget.controller);
         }
 
-        final showRegister = _showRegister &&
-            state.status != AuthStatus.unauthenticated;
+        final showRegister = _showRegister;
         if (showRegister) {
           return RegisterScreen(
             controller: widget.controller,

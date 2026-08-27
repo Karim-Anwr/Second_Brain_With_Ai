@@ -119,7 +119,7 @@ def test_every_protected_route_rejects_missing_or_invalid_bearer_before_global_r
 
     responses = _protected_requests(client, headers)
     assert all(response.status_code == 401 for response in responses)
-    assert all(response.json()["error"] == {"code": "authentication_failed", "message": "Invalid email or password."} for response in responses)
+    assert all(response.json()["error"] == {"code": "authentication_required", "message": "Authentication is required."} for response in responses)
 
 
 def test_authenticated_routes_propagate_token_owner_use_only_owned_primitives_and_commit_creates(client, db, monkeypatch):
