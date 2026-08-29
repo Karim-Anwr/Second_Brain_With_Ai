@@ -6,16 +6,16 @@ import 'package:mobile/models/search_response.dart';
 import 'package:mobile/repositories/search_repository.dart';
 
 void main() {
-  group('SearchController', () {
+  group('MemorySearchController', () {
     test('starts in the initial state', () {
-      final controller = SearchController(repository: _FakeSearchRepository());
+      final controller = MemorySearchController(repository: _FakeSearchRepository());
 
       expect(controller.state.status, SearchStatus.initial);
     });
 
     test('trims a query and transitions to successful results', () async {
       final repository = _FakeSearchRepository(response: _response());
-      final controller = SearchController(repository: repository);
+      final controller = MemorySearchController(repository: repository);
       final states = <SearchStatus>[];
       controller.addListener(() => states.add(controller.state.status));
 
@@ -27,7 +27,7 @@ void main() {
     });
 
     test('transitions to empty for an empty backend result set', () async {
-      final controller = SearchController(
+      final controller = MemorySearchController(
         repository: _FakeSearchRepository(response: _response(results: const [])),
       );
 
@@ -38,7 +38,7 @@ void main() {
 
     test('reports an inline validation error without calling the repository', () async {
       final repository = _FakeSearchRepository();
-      final controller = SearchController(repository: repository);
+      final controller = MemorySearchController(repository: repository);
 
       await controller.search('   ');
 
@@ -48,7 +48,7 @@ void main() {
     });
 
     test('maps unauthorized and network errors to safe user-facing states', () async {
-      final unauthorized = SearchController(
+      final unauthorized = MemorySearchController(
         repository: _FakeSearchRepository(
           error: const ApiException(
             statusCode: 401,
@@ -60,7 +60,7 @@ void main() {
       await unauthorized.search('private');
       expect(unauthorized.state.message, 'Your session has expired. Please sign in again.');
 
-      final offline = SearchController(
+      final offline = MemorySearchController(
         repository: _FakeSearchRepository(
           error: const ApiException(code: 'network_error', message: 'offline'),
         ),
@@ -71,7 +71,7 @@ void main() {
 
     test('does not repeat a completed identical query unless retry is explicit', () async {
       final repository = _FakeSearchRepository(response: _response());
-      final controller = SearchController(repository: repository);
+      final controller = MemorySearchController(repository: repository);
 
       await controller.search('laptop');
       await controller.search(' laptop ');

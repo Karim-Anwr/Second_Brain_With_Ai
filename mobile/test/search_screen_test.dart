@@ -8,7 +8,7 @@ import 'package:mobile/repositories/search_repository.dart';
 void main() {
   testWidgets('submits a query and renders the verified result fields', (tester) async {
     final repository = _FakeSearchRepository(response: _response());
-    final controller = SearchController(repository: repository);
+    final controller = MemorySearchController(repository: repository);
 
     await tester.pumpWidget(
       MaterialApp(home: Scaffold(body: SearchScreen(controller: controller))),
@@ -25,7 +25,7 @@ void main() {
   });
 
   testWidgets('renders an empty-state message and retry action', (tester) async {
-    final controller = SearchController(
+    final controller = MemorySearchController(
       repository: _FakeSearchRepository(
         response: const SearchResponse(query: 'missing', total: 0, results: [], llmAnswer: null),
       ),

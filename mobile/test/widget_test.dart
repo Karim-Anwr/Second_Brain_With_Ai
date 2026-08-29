@@ -14,7 +14,7 @@ void main() {
         controller: AuthController(
           repository: _FakeAuthRepository(),
         ),
-        searchController: SearchController(repository: _FakeSearchRepository()),
+        searchController: MemorySearchController(repository: _FakeSearchRepository()),
       ),
     );
     await tester.pumpAndSettle();
@@ -30,7 +30,7 @@ void main() {
         controller: AuthController(
           repository: _FakeAuthRepository(),
         ),
-        searchController: SearchController(repository: _FakeSearchRepository()),
+        searchController: MemorySearchController(repository: _FakeSearchRepository()),
       ),
     );
     await tester.pumpAndSettle();
@@ -51,7 +51,7 @@ void main() {
         controller: AuthController(
           repository: _FakeAuthRepository(),
         ),
-        searchController: SearchController(repository: _FakeSearchRepository()),
+        searchController: MemorySearchController(repository: _FakeSearchRepository()),
       ),
     );
     await tester.pumpAndSettle();
@@ -72,7 +72,7 @@ void main() {
         controller: AuthController(
           repository: _FakeAuthRepository(hasSession: true),
         ),
-        searchController: SearchController(repository: _FakeSearchRepository()),
+        searchController: MemorySearchController(repository: _FakeSearchRepository()),
       ),
     );
     await tester.pumpAndSettle();
@@ -87,7 +87,7 @@ void main() {
         controller: AuthController(
           repository: _FakeAuthRepository(hasSession: true),
         ),
-        searchController: SearchController(repository: _FakeSearchRepository()),
+        searchController: MemorySearchController(repository: _FakeSearchRepository()),
       ),
     );
     await tester.pumpAndSettle();

@@ -7,7 +7,7 @@ import 'search_state.dart';
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key, required this.controller});
 
-  final SearchController controller;
+  final MemorySearchController controller;
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -65,7 +65,7 @@ class _SearchScreenState extends State<SearchScreen> {
 class _SearchContent extends StatelessWidget {
   const _SearchContent({required this.controller, required this.state});
 
-  final SearchController controller;
+  final MemorySearchController controller;
   final SearchState state;
 
   @override

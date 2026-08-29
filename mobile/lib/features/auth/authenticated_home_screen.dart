@@ -12,7 +12,7 @@ class AuthenticatedHomeScreen extends StatelessWidget {
   });
 
   final AuthController controller;
-  final SearchController searchController;
+  final MemorySearchController searchController;
 
   @override
   Widget build(BuildContext context) {

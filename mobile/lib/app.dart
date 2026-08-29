@@ -16,7 +16,7 @@ class SecondBrainApp extends StatefulWidget {
   });
 
   final AuthController? controller;
-  final SearchController? searchController;
+  final MemorySearchController? searchController;
 
   @override
   State<SecondBrainApp> createState() => _SecondBrainAppState();
@@ -24,7 +24,7 @@ class SecondBrainApp extends StatefulWidget {
 
 class _SecondBrainAppState extends State<SecondBrainApp> {
   late final AuthController _controller;
-  late final SearchController _searchController;
+  late final MemorySearchController _searchController;
   late final bool _ownsController;
   late final bool _ownsSearchController;
 
@@ -76,7 +76,7 @@ class _SecondBrainAppState extends State<SecondBrainApp> {
     );
   }
 
-  SearchController _createSearchController(AuthController controller) {
+  MemorySearchController _createSearchController(AuthController controller) {
     final tokenStorage = SecureTokenStorage();
     final apiClient = ApiClient(
       tokenStorage: tokenStorage,
@@ -85,8 +85,8 @@ class _SecondBrainAppState extends State<SecondBrainApp> {
     return _searchControllerFor(apiClient);
   }
 
-  SearchController _searchControllerFor(ApiClient apiClient) {
-    return SearchController(repository: ApiSearchRepository(apiClient: apiClient));
+  MemorySearchController _searchControllerFor(ApiClient apiClient) {
+    return MemorySearchController(repository: ApiSearchRepository(apiClient: apiClient));
   }
 
   @override
@@ -113,5 +113,5 @@ class _AppDependencies {
   });
 
   final AuthController authController;
-  final SearchController searchController;
+  final MemorySearchController searchController;
 }

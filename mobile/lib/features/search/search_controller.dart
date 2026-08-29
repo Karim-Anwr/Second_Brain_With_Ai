@@ -4,8 +4,8 @@ import '../../core/network/api_exception.dart';
 import '../../repositories/search_repository.dart';
 import 'search_state.dart';
 
-class SearchController extends ChangeNotifier {
-  SearchController({required SearchRepository repository}) : _repository = repository;
+class MemorySearchController extends ChangeNotifier {
+  MemorySearchController({required SearchRepository repository}) : _repository = repository;
 
   final SearchRepository _repository;
   SearchState _state = const SearchState.initial();

@@ -15,7 +15,7 @@ class AuthGate extends StatefulWidget {
   });
 
   final AuthController controller;
-  final SearchController searchController;
+  final MemorySearchController searchController;
 
   @override
   State<AuthGate> createState() => _AuthGateState();
