@@ -6,16 +6,19 @@ import 'authenticated_home_screen.dart';
 import 'login_screen.dart';
 import 'register_screen.dart';
 import '../search/search_controller.dart';
+import '../upload/upload_controller.dart';
 
 class AuthGate extends StatefulWidget {
   const AuthGate({
     super.key,
     required this.controller,
     required this.searchController,
+    required this.uploadController,
   });
 
   final AuthController controller;
   final MemorySearchController searchController;
+  final UploadController uploadController;
 
   @override
   State<AuthGate> createState() => _AuthGateState();
@@ -37,6 +40,7 @@ class _AuthGateState extends State<AuthGate> {
           return AuthenticatedHomeScreen(
             controller: widget.controller,
             searchController: widget.searchController,
+            uploadController: widget.uploadController,
           );
         }
 

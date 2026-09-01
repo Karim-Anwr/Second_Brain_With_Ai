@@ -118,7 +118,7 @@ class AuthInterceptor extends Interceptor {
       }
 
       final response = await _refreshClient.post<dynamic>(
-        'auth/refresh',
+        '/auth/refresh',
         data: <String, dynamic>{'refresh_token': refreshToken},
       );
       final data = response.data;

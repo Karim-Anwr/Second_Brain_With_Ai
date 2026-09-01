@@ -28,7 +28,7 @@ class UploadRepository implements UploadRepositoryContract {
     });
 
     final response = await _apiClient.post<Map<String, dynamic>>(
-      '/api/v1/upload',
+      '/upload',
       data: formData,
     );
 
@@ -41,7 +41,7 @@ class UploadRepository implements UploadRepositoryContract {
     required String text,
   }) async {
     final response = await _apiClient.post<Map<String, dynamic>>(
-      '/api/v1/upload/text',
+      '/upload/text',
       data: {'title': title, 'text': text},
     );
 
@@ -51,7 +51,7 @@ class UploadRepository implements UploadRepositoryContract {
   @override
   Future<MemoryResponse> uploadLink(String url) async {
     final response = await _apiClient.post<Map<String, dynamic>>(
-      '/api/v1/upload/link',
+      '/upload/link',
       data: {'url': url},
     );
 
